@@ -1,0 +1,15 @@
+# 日志文件
+logs/
+*.log
+
+# 本地状态文件
+snapshots/.last-update
+snapshots/.last-install-state.json
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+
+# macOS
+.DS_Store

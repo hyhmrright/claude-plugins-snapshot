@@ -1,0 +1,9 @@
+{
+  "name": "plugin-auto-manager",
+  "description": "Automatically manage Claude Code plugins - auto-install missing plugins and auto-update every 24 hours",
+  "version": "1.0.0",
+  "author": {
+    "name": "User",
+    "email": "user@local"
+  }
+}

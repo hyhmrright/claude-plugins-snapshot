@@ -1,0 +1,17 @@
+{
+  "auto_install": {
+    "enabled": true
+  },
+  "auto_update": {
+    "enabled": true,
+    "interval_hours": 24,
+    "notify": true
+  },
+  "git_sync": {
+    "enabled": true,
+    "auto_push": true
+  },
+  "snapshot": {
+    "keep_versions": 10
+  }
+}
