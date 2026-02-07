@@ -104,9 +104,39 @@ auto-manager/
 
 ## 🔧 常用命令
 
-### 手动安装插件后同步到 Git（重要！）
+### ⚠️ 手动安装插件后同步到 Git（必须执行！）
 
-在你手动安装/卸载插件后，运行此命令同步到 GitHub：
+**重要规则**：每次手动安装/卸载插件后，**必须立即**运行同步命令！
+
+#### 如果使用 Claude Code AI 助手
+
+当您告诉 Claude "我安装了新插件"时，Claude 会自动执行以下流程：
+
+1. **运行同步脚本**：
+   ```bash
+   cd ~/.claude/plugins/auto-manager && python3 scripts/sync-snapshot.py
+   ```
+
+2. **验证同步结果**：
+   ```bash
+   # 查看最新提交
+   git log -1 --oneline
+
+   # 确认已推送
+   git status -sb
+
+   # 检查插件数量
+   cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.stdin); print(f'插件数量: {len(data[\"plugins\"])}')"
+   ```
+
+3. **关键路径**：
+   - 实际插件目录：`~/.claude/plugins/auto-manager/`
+   - Git 仓库：`git@github.com:hyhmrright/claude-plugins-snapshot.git`
+   - 快照文件：`~/.claude/plugins/auto-manager/snapshots/current.json`
+
+#### 手动执行同步
+
+如果不使用 Claude，手动运行：
 
 ```bash
 # 推荐（跨平台）
