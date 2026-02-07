@@ -7,22 +7,42 @@
 - ✅ **自动安装**：启动时自动安装快照中缺失的插件
 - ✅ **自动更新**：每 24 小时自动更新所有插件
 - ✅ **Git 同步**：快照自动同步到 GitHub，支持多机器共享
-- ✅ **macOS 通知**：更新完成后发送系统通知
+- ✅ **跨平台通知**：更新完成后发送系统通知（macOS/Linux/Windows）
 - ✅ **后台执行**：不阻塞 Claude 启动
 - ✅ **一键安装**：新机器上运行一个脚本即可完成配置
+- ✅ **跨平台支持**：macOS、Linux、Windows、DevContainer
 
 ## 🚀 快速开始
 
-### 在新机器上安装
+### macOS / Linux / DevContainer
 
 ```bash
 # 1. 克隆仓库到 Claude 插件目录
 cd ~/.claude/plugins/
 git clone git@github.com:hyhmrright/claude-plugins-snapshot.git auto-manager
 
-# 2. 运行安装脚本
+# 2. 运行安装脚本（推荐使用 Python 版本）
 cd auto-manager
-./install.sh
+python3 install.py
+
+# 或使用 Bash 脚本（仅 Unix 系统）
+# ./install.sh
+
+# 3. 重启 Claude Code
+# 插件会自动安装快照中的所有插件
+```
+
+### Windows
+
+```powershell
+# 1. 克隆仓库到 Claude 插件目录
+# 注意：Windows 上 Claude 配置目录可能在 %APPDATA%\Claude
+cd %USERPROFILE%\.claude\plugins
+git clone git@github.com:hyhmrright/claude-plugins-snapshot.git auto-manager
+
+# 2. 运行 Python 安装脚本
+cd auto-manager
+python install.py
 
 # 3. 重启 Claude Code
 # 插件会自动安装快照中的所有插件
@@ -177,6 +197,80 @@ git pull
 
 # 2. 重启 Claude
 # 新插件会自动安装
+```
+
+## 🌍 跨平台支持
+
+### 支持的平台
+
+| 平台 | 状态 | 安装脚本 | 通知 | 备注 |
+|------|------|---------|------|------|
+| macOS | ✅ 完全支持 | `install.py` / `install.sh` | osascript | 原生支持 |
+| Linux | ✅ 完全支持 | `install.py` / `install.sh` | notify-send | 需要桌面环境 |
+| Windows | ✅ 完全支持 | `install.py` | PowerShell Toast | 推荐使用 Python 脚本 |
+| DevContainer | ✅ 完全支持 | `install.py` / `install.sh` | 可能不可用 | 通知功能可选 |
+| WSL | ✅ 完全支持 | `install.py` / `install.sh` | 取决于环境 | 按 Linux 处理 |
+
+### 平台差异说明
+
+**Claude 配置目录**：
+- macOS/Linux/WSL: `~/.claude`
+- Windows: `%APPDATA%\Claude` 或 `~/.claude`
+- DevContainer: `~/.claude`（容器内）
+
+**通知系统**：
+- macOS: 使用 `osascript` 发送原生通知
+- Linux: 使用 `notify-send`（需要安装 libnotify）
+- Windows: 使用 PowerShell Toast 通知
+- DevContainer: 可能没有桌面环境，通知功能自动跳过
+
+**安装脚本选择**：
+- **推荐**：`python3 install.py`（所有平台通用）
+- 备选：`./install.sh`（仅 Unix 系统，Windows 需要 Git Bash）
+
+### DevContainer 特殊说明
+
+在 DevContainer 中使用时：
+
+```bash
+# 1. 确保 devcontainer.json 中挂载了 Claude 配置
+{
+  "mounts": [
+    "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind"
+  ]
+}
+
+# 2. 在容器内安装
+cd ~/.claude/plugins/
+git clone git@github.com:hyhmrright/claude-plugins-snapshot.git auto-manager
+cd auto-manager
+python3 install.py
+
+# 3. 重启 Claude Code（在宿主机上）
+```
+
+### Windows 特殊说明
+
+**路径格式**：
+```powershell
+# PowerShell（推荐）
+cd $env:USERPROFILE\.claude\plugins
+
+# CMD
+cd %USERPROFILE%\.claude\plugins
+
+# Git Bash
+cd ~/.claude/plugins
+```
+
+**执行权限**：
+Windows 不需要 `chmod +x`，Python 脚本可以直接运行。
+
+**SSH 密钥**：
+确保 Git SSH 密钥已配置：
+```powershell
+# 测试 GitHub 连接
+ssh -T git@github.com
 ```
 
 ## ❓ 常见问题

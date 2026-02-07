@@ -291,16 +291,54 @@ def sync_to_git(config: dict) -> bool:
 
 
 def send_notification(title: str, message: str) -> None:
-    """发送 macOS 系统通知"""
+    """发送系统通知（跨平台）"""
+    import platform
+
+    system = platform.system()
+
     try:
-        script = f'display notification "{message}" with title "Claude Plugins" subtitle "{title}"'
-        subprocess.run(
-            ["osascript", "-e", script],
-            capture_output=True,
-            timeout=10,
-            check=False,
-        )
+        if system == "Darwin":  # macOS
+            script = f'display notification "{message}" with title "Claude Plugins" subtitle "{title}"'
+            subprocess.run(
+                ["osascript", "-e", script],
+                capture_output=True,
+                timeout=10,
+                check=False,
+            )
+        elif system == "Linux":  # Linux
+            # 尝试使用 notify-send
+            subprocess.run(
+                ["notify-send", "Claude Plugins", f"{title}: {message}"],
+                capture_output=True,
+                timeout=10,
+                check=False,
+            )
+        elif system == "Windows":  # Windows
+            # 使用 PowerShell 发送通知
+            ps_script = f"""
+            [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
+            $template = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)
+            $toastXml = [xml] $template.GetXml()
+            $toastXml.GetElementsByTagName("text")[0].AppendChild($toastXml.CreateTextNode("Claude Plugins")) > $null
+            $toastXml.GetElementsByTagName("text")[1].AppendChild($toastXml.CreateTextNode("{title}: {message}")) > $null
+            $xml = New-Object Windows.Data.Xml.Dom.XmlDocument
+            $xml.LoadXml($toastXml.OuterXml)
+            $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
+            [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("Claude Plugins").Show($toast)
+            """
+            subprocess.run(
+                ["powershell", "-Command", ps_script],
+                capture_output=True,
+                timeout=10,
+                check=False,
+            )
+        else:
+            log(f"Notifications not supported on {system}")
+            return
+
         log(f"Notification sent: {title} - {message}")
+    except FileNotFoundError:
+        log(f"Notification command not found on {system}")
     except Exception as e:
         log(f"Failed to send notification: {e}")
 
