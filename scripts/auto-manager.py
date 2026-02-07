@@ -240,6 +240,36 @@ def update_timestamp() -> None:
     log(f"Updated timestamp: {timestamp}")
 
 
+def snapshot_has_changes() -> bool:
+    """检查快照是否有实质性变化（插件列表变化）"""
+    if not CURRENT_SNAPSHOT.exists():
+        return True  # 没有快照，肯定有变化
+
+    try:
+        # 读取当前快照
+        old_snapshot = json.loads(CURRENT_SNAPSHOT.read_text())
+        old_plugins = set(old_snapshot.get("plugins", {}).keys())
+
+        # 获取当前已安装插件
+        current_plugins = get_installed_plugins()
+
+        # 比较插件列表
+        if old_plugins != current_plugins:
+            added = current_plugins - old_plugins
+            removed = old_plugins - current_plugins
+            if added:
+                log(f"New plugins detected: {', '.join(added)}")
+            if removed:
+                log(f"Removed plugins detected: {', '.join(removed)}")
+            return True
+
+        log("Plugin list unchanged, no need to sync to Git")
+        return False
+    except Exception as e:
+        log(f"Error checking snapshot changes: {e}")
+        return True  # 出错时保守处理，认为有变化
+
+
 def create_new_snapshot() -> bool:
     """创建新快照"""
     try:
@@ -358,13 +388,18 @@ def main() -> None:
     # 加载配置
     config = load_config()
 
+    # 检查安装前的插件列表变化
+    plugins_changed = False
+
     # 1. 安装缺失的插件
     if config["auto_install"]["enabled"]:
         installed_count = install_missing_plugins()
-        if installed_count > 0 and config["auto_update"]["notify"]:
-            send_notification(
-                "Auto-Install", f"Installed {installed_count} missing plugin(s)"
-            )
+        if installed_count > 0:
+            plugins_changed = True  # 安装了新插件，需要同步
+            if config["auto_update"]["notify"]:
+                send_notification(
+                    "Auto-Install", f"Installed {installed_count} missing plugin(s)"
+                )
     else:
         log("Auto-install is disabled in config")
 
@@ -373,18 +408,25 @@ def main() -> None:
         update_count = update_all_plugins()
 
         if update_count > 0:
-            # 创建新快照
-            create_new_snapshot()
-
-            # 同步到 Git
-            sync_to_git(config)
-
             # 发送通知
             if config["auto_update"]["notify"]:
                 send_notification("Auto-Update", f"Updated {update_count} plugin(s)")
 
         # 更新时间戳
         update_timestamp()
+
+    # 3. 只在插件列表变化时才创建快照并同步到 Git
+    if plugins_changed or snapshot_has_changes():
+        log("Plugin list changed, creating snapshot and syncing to Git...")
+
+        # 创建新快照
+        create_new_snapshot()
+
+        # 同步到 Git
+        if sync_to_git(config):
+            log("✓ Snapshot synced to Git")
+    else:
+        log("No plugin list changes, skipping Git sync")
 
     log("========================================")
     log("Claude Plugin Auto-Manager Finished")
