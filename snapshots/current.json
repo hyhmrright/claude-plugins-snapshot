@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "timestamp": "2026-02-07T04:23:08.023455+00:00Z",
+  "timestamp": "2026-02-07T14:34:32.792815+00:00Z",
   "plugins": {
     "document-skills@anthropic-agent-skills": {
       "enabled": true,
@@ -63,6 +63,27 @@
       "version": "1.0.0",
       "scope": "user",
       "marketplace": "local"
+    },
+    "superpowers@superpowers-marketplace": {
+      "enabled": true,
+      "version": "4.2.0",
+      "scope": "user",
+      "marketplace": "superpowers-marketplace",
+      "gitCommitSha": "a98c5dfc9de0df5318f4980d91d24780a566ee60"
+    },
+    "superpowers@claude-plugins-official": {
+      "enabled": true,
+      "version": "4.2.0",
+      "scope": "user",
+      "marketplace": "claude-plugins-official",
+      "gitCommitSha": "a98c5dfc9de0df5318f4980d91d24780a566ee60"
+    },
+    "claude-md-management@claude-plugins-official": {
+      "enabled": true,
+      "version": "1.0.0",
+      "scope": "user",
+      "marketplace": "claude-plugins-official",
+      "gitCommitSha": "2cd88e7947b7382e045666abee790c7f55f669f3"
     }
   },
   "marketplaces": {
@@ -74,6 +95,11 @@
     "claude-plugins-official": {
       "source": "github",
       "repo": "anthropics/claude-plugins-official",
+      "autoUpdate": false
+    },
+    "superpowers-marketplace": {
+      "source": "github",
+      "repo": "obra/superpowers-marketplace",
       "autoUpdate": false
     }
   }
