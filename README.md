@@ -152,6 +152,29 @@ auto-manager/
    - Git 仓库：`git@github.com:hyhmrright/claude-plugins-snapshot.git`
    - 快照文件：`~/.claude/plugins/auto-manager/snapshots/current.json`
 
+#### Claude AI 主动检测规则（重要！）
+
+**给 Claude AI 的指导**：当用户提及插件相关话题时，Claude 应该主动、敏锐地识别同步时机。
+
+**触发场景**（必须敏锐识别）：
+- ✅ 用户说"我装了新插件" / "我卸载了插件"
+- ✅ 用户说"更新插件同步" / "同步插件配置"
+- ✅ **用户询问插件规则**（如"你还记得 /plugin 规则吗"）→ 可能刚操作了插件，主动询问是否需要同步
+- ✅ **用户反问变化**（如"你没有发现变化吗"）→ 明确暗示有变化，立即检查同步
+- ✅ **任何提及插件的对话** → 主动问"是否需要同步插件配置？"
+
+**关键原则：主动性和敏锐度**
+- ❌ 不要机械地等待精确触发词
+- ✅ 当用户提到插件话题时，主动询问是否有变化
+- ✅ 理解暗示和反问语气（"没发现吗" = 有变化）
+- ✅ 宁可多问一句，不要漏掉同步时机
+- 📍 教训来源：用户卸载 superpowers@claude-plugins-official 后，Claude 没有第一时间响应
+
+**执行流程**：
+```bash
+cd ~/.claude/plugins/auto-manager && python3 scripts/sync-snapshot.py
+```
+
 #### 手动执行同步
 
 如果不使用 Claude，手动运行：
