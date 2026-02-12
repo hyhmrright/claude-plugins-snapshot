@@ -5,7 +5,7 @@
 ## ✨ 功能特性
 
 - ✅ **自动安装**：启动时自动安装快照中缺失的插件
-- ✅ **自动更新**：每 24 小时自动更新所有插件
+- ✅ **自动更新**：可配置每次启动更新或定时更新（默认：每次启动时更新）
 - ✅ **Git 同步**：快照自动同步到 GitHub，支持多机器共享
 - ✅ **跨平台通知**：更新完成后发送系统通知（macOS/Linux/Windows）
 - ✅ **后台执行**：不阻塞 Claude 启动
@@ -78,7 +78,9 @@ python install.py
 
 **每次启动 Claude 时**：
 1. **安装缺失插件**：对比快照和当前安装，自动安装缺失的插件
-2. **定时更新**：检查距离上次更新是否超过 24 小时，如果是则自动更新所有插件
+2. **自动更新**（可配置）：
+   - **默认行为**（`interval_hours: 0`）：每次启动都更新所有插件，确保插件始终最新
+   - **定时更新**（`interval_hours: 24`）：每 24 小时更新一次插件
 3. **智能同步**：
    - ✅ **插件列表变化**（安装/卸载）→ 生成快照并推送到 Git
    - ❌ **只是版本更新**（自动更新）→ 不推送，避免无意义的 commit
@@ -221,7 +223,9 @@ cat ~/.claude/plugins/auto-manager/snapshots/current.json
   },
   "auto_update": {
     "enabled": true,             // 启用/禁用自动更新
-    "interval_hours": 24,        // 更新间隔（小时）
+    "interval_hours": 0,         // 更新间隔（小时）
+                                 // 0 = 每次启动都更新
+                                 // 24 = 每 24 小时更新一次
     "notify": true               // 是否发送系统通知
   },
   "git_sync": {
@@ -233,6 +237,12 @@ cat ~/.claude/plugins/auto-manager/snapshots/current.json
   }
 }
 ```
+
+**配置说明**：
+
+- `interval_hours: 0` - **每次启动时更新**：每次启动 Claude Code 时都会检查并更新所有插件（推荐）
+- `interval_hours: 24` - **每日更新**：每 24 小时更新一次插件
+- `interval_hours: N` - **自定义间隔**：每 N 小时更新一次
 
 ## 📦 快照文件格式
 
@@ -374,6 +384,22 @@ ssh -T git@github.com
 ### 如何修改更新频率？
 
 编辑 `config.json`，修改 `auto_update.interval_hours` 的值（单位：小时）。
+
+**可选值**：
+- `0` - 每次启动 Claude Code 时都更新（推荐，确保插件始终最新）
+- `24` - 每 24 小时更新一次
+- 任意数字 - 自定义更新间隔（小时）
+
+**示例**：
+```json
+{
+  "auto_update": {
+    "enabled": true,
+    "interval_hours": 0,  // 每次启动都更新
+    "notify": true
+  }
+}
+```
 
 ### 如何查看自动安装/更新的日志？
 
