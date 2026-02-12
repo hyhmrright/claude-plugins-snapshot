@@ -4,7 +4,7 @@
   },
   "auto_update": {
     "enabled": true,
-    "interval_hours": 24,
+    "interval_hours": 0,
     "notify": true
   },
   "git_sync": {

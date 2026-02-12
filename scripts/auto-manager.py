@@ -168,6 +168,13 @@ def should_update(config: dict) -> bool:
         log("Auto-update is disabled in config")
         return False
 
+    interval_hours = config["auto_update"]["interval_hours"]
+
+    # 如果 interval_hours=0，每次启动都更新
+    if interval_hours == 0:
+        log("Update interval set to 0, triggering update on every launch")
+        return True
+
     if not LAST_UPDATE_FILE.exists():
         log("No previous update timestamp, triggering update")
         return True
@@ -182,7 +189,6 @@ def should_update(config: dict) -> bool:
 
     # 计算时间差
     now = datetime.now(timezone.utc)
-    interval_hours = config["auto_update"]["interval_hours"]
     delta = now - last_update
 
     if delta >= timedelta(hours=interval_hours):
