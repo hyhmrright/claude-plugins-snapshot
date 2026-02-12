@@ -201,6 +201,29 @@ def should_update(config: dict) -> bool:
     return False
 
 
+def update_all_marketplaces() -> int:
+    """更新所有 Marketplaces"""
+    try:
+        log("Updating all marketplaces...")
+        cmd = ["claude", "plugin", "marketplace", "update"]
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=120, check=False
+        )
+
+        if result.returncode == 0:
+            log("✓ All marketplaces updated")
+            return 1
+        else:
+            log(f"✗ Failed to update marketplaces: {result.stderr}")
+            return 0
+    except subprocess.TimeoutExpired:
+        log("✗ Timeout updating marketplaces")
+        return 0
+    except Exception as e:
+        log(f"✗ Error updating marketplaces: {e}")
+        return 0
+
+
 def update_all_plugins() -> int:
     """更新所有已安装的插件"""
     installed = get_installed_plugins()
@@ -411,12 +434,19 @@ def main() -> None:
 
     # 2. 检查是否需要更新
     if args.force_update or should_update(config):
+        # 先更新 marketplaces
+        marketplace_updated = update_all_marketplaces()
+
+        # 再更新插件
         update_count = update_all_plugins()
 
-        if update_count > 0:
+        if marketplace_updated > 0 or update_count > 0:
             # 发送通知
             if config["auto_update"]["notify"]:
-                send_notification("Auto-Update", f"Updated {update_count} plugin(s)")
+                msg = f"Updated {update_count} plugin(s)"
+                if marketplace_updated > 0:
+                    msg = f"Updated marketplaces and {update_count} plugin(s)"
+                send_notification("Auto-Update", msg)
 
         # 更新时间戳
         update_timestamp()
