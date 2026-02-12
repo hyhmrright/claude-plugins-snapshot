@@ -1,5 +1,5 @@
 {
-  "description": "Plugin Auto-Manager SessionStart Hook",
+  "description": "Plugin Auto-Manager Hooks",
   "hooks": {
     "SessionStart": [
       {
@@ -8,6 +8,17 @@
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/session-start.sh",
             "timeout": 30
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/sync-snapshot-silent.py",
+            "timeout": 10
           }
         ]
       }
