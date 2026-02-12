@@ -88,27 +88,24 @@ python install.py
    - ✅ **插件列表变化**（安装/卸载）→ 生成快照并推送到 Git
    - ❌ **只是版本更新**（自动更新）→ 不推送，避免无意义的 commit
 
-#### UserPromptSubmit Hook（实时同步）🆕
-
-**每次你发送消息时**（自动在后台运行）：
-1. **静默检测**：检查插件列表是否有变化
-2. **即时同步**：如果检测到插件安装/卸载，立即推送到 GitHub
-3. **无感知**：没有变化时完全静默，不干扰对话
-
-**优势**：
-- ✅ **近乎实时**：安装/卸载插件后，下次发消息时立即同步（延迟仅几秒）
-- ✅ **完全自动**：无需手动操作，无需告诉 Claude
-- ✅ **零干扰**：只在有变化时才输出信息
-
 ### Git 同步策略
 
 **只在以下情况推送到 GitHub**：
-- ✅ 手动安装了新插件
-- ✅ 卸载了插件
+- ✅ 启动时检测到插件列表变化（安装/卸载）
 - ✅ 启动时自动安装了缺失的插件
 - ❌ 自动更新（只更新版本号，不改变插件列表）
 
 这样可以避免每天产生大量无意义的 Git commit。
+
+### 手动安装/卸载插件后的同步
+
+如果在当前会话中安装/卸载了插件，有两种方式同步：
+
+1. **重启 Claude Code**（推荐）：SessionStart hook 会自动检测并同步
+2. **手动运行同步命令**（如需立即同步）：
+   ```bash
+   cd ~/.claude/plugins/auto-manager && python3 scripts/sync-snapshot.py
+   ```
 
 ## 📁 目录结构
 
@@ -117,15 +114,14 @@ auto-manager/
 ├── .claude-plugin/
 │   └── plugin.json          # 插件元数据
 ├── hooks/
-│   └── hooks.json           # Hook 配置（SessionStart + UserPromptSubmit）
+│   └── hooks.json           # SessionStart Hook 配置
 ├── scripts/
-│   ├── session-start.sh         # SessionStart Hook 入口
-│   ├── auto-manager.py          # 主逻辑（安装 + 更新）
-│   ├── create-snapshot.py       # 生成插件快照
-│   ├── git-sync.py              # Git 同步脚本
-│   ├── sync-snapshot.sh         # 手动同步快照到 Git
-│   ├── sync-snapshot.py         # 手动同步快照（跨平台）
-│   └── sync-snapshot-silent.py  # 静默同步（UserPromptSubmit 使用）🆕
+│   ├── session-start.sh     # Hook 入口（后台执行）
+│   ├── auto-manager.py      # 主逻辑（安装 + 更新）
+│   ├── create-snapshot.py   # 生成插件快照
+│   ├── git-sync.py          # Git 同步脚本
+│   ├── sync-snapshot.sh     # 手动同步快照到 Git
+│   └── sync-snapshot.py     # 手动同步快照（跨平台）
 ├── snapshots/
 │   ├── current.json         # 当前快照（唯一快照文件）
 │   ├── .last-update         # 上次更新时间戳（本地）
@@ -140,24 +136,19 @@ auto-manager/
 
 ## 🔧 常用命令
 
-### ✨ 插件同步到 Git（完全自动）🆕
+### 📦 插件同步到 Git
 
-**好消息**：插件同步现在**完全自动化**，无需手动操作！
+#### 自动同步（推荐）
 
-#### 自动同步机制
+**SessionStart Hook** 会在每次启动 Claude Code 时自动检测插件变化并同步：
 
-1. **UserPromptSubmit Hook**：每次你发送消息时，系统会自动检测插件变化
-2. **即时同步**：检测到插件安装/卸载后，立即推送到 GitHub
-3. **零干扰**：只在有变化时才输出通知，没有变化时完全静默
-
-**你只需要**：
-- 安装或卸载插件
-- 继续正常使用 Claude Code
-- 系统会自动在后台同步（通常在下次发消息时完成）
+1. **安装/卸载插件后**：重启 Claude Code
+2. **系统自动检测**：SessionStart hook 自动运行
+3. **智能同步**：只在插件列表有变化时才推送到 GitHub
 
 #### 手动立即同步（可选）
 
-如果想立即同步而不等下次发消息：
+如果不想重启，可以手动运行同步命令：
 
 ```bash
 # 推荐（跨平台）
@@ -166,6 +157,11 @@ python3 ~/.claude/plugins/auto-manager/scripts/sync-snapshot.py
 # 或使用 Bash 脚本（Unix 系统）
 ~/.claude/plugins/auto-manager/scripts/sync-snapshot.sh
 ```
+
+这个命令会：
+1. 生成新快照
+2. 检测是否有变化
+3. 自动提交并推送到 GitHub
 
 #### 验证同步结果（可选）
 
