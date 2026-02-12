@@ -76,6 +76,8 @@ python install.py
 
 ### 自动化流程
 
+#### SessionStart Hook（会话启动时）
+
 **每次启动 Claude 时**：
 1. **安装缺失插件**：对比快照和当前安装，自动安装缺失的插件
 2. **自动更新**（可配置）：
@@ -85,6 +87,18 @@ python install.py
 3. **智能同步**：
    - ✅ **插件列表变化**（安装/卸载）→ 生成快照并推送到 Git
    - ❌ **只是版本更新**（自动更新）→ 不推送，避免无意义的 commit
+
+#### UserPromptSubmit Hook（实时同步）🆕
+
+**每次你发送消息时**（自动在后台运行）：
+1. **静默检测**：检查插件列表是否有变化
+2. **即时同步**：如果检测到插件安装/卸载，立即推送到 GitHub
+3. **无感知**：没有变化时完全静默，不干扰对话
+
+**优势**：
+- ✅ **近乎实时**：安装/卸载插件后，下次发消息时立即同步（延迟仅几秒）
+- ✅ **完全自动**：无需手动操作，无需告诉 Claude
+- ✅ **零干扰**：只在有变化时才输出信息
 
 ### Git 同步策略
 
@@ -103,14 +117,15 @@ auto-manager/
 ├── .claude-plugin/
 │   └── plugin.json          # 插件元数据
 ├── hooks/
-│   └── hooks.json           # SessionStart Hook 配置
+│   └── hooks.json           # Hook 配置（SessionStart + UserPromptSubmit）
 ├── scripts/
-│   ├── session-start.sh     # Hook 入口（后台执行）
-│   ├── auto-manager.py      # 主逻辑（安装 + 更新）
-│   ├── create-snapshot.py   # 生成插件快照
-│   ├── git-sync.py          # Git 同步脚本
-│   ├── sync-snapshot.sh     # 手动同步快照到 Git
-│   └── sync-snapshot.py     # 手动同步快照（跨平台）
+│   ├── session-start.sh         # SessionStart Hook 入口
+│   ├── auto-manager.py          # 主逻辑（安装 + 更新）
+│   ├── create-snapshot.py       # 生成插件快照
+│   ├── git-sync.py              # Git 同步脚本
+│   ├── sync-snapshot.sh         # 手动同步快照到 Git
+│   ├── sync-snapshot.py         # 手动同步快照（跨平台）
+│   └── sync-snapshot-silent.py  # 静默同步（UserPromptSubmit 使用）🆕
 ├── snapshots/
 │   ├── current.json         # 当前快照（唯一快照文件）
 │   ├── .last-update         # 上次更新时间戳（本地）
@@ -125,62 +140,24 @@ auto-manager/
 
 ## 🔧 常用命令
 
-### ⚠️ 手动安装插件后同步到 Git（必须执行！）
+### ✨ 插件同步到 Git（完全自动）🆕
 
-**重要规则**：每次手动安装/卸载插件后，**必须立即**运行同步命令！
+**好消息**：插件同步现在**完全自动化**，无需手动操作！
 
-#### 如果使用 Claude Code AI 助手
+#### 自动同步机制
 
-当您告诉 Claude "我安装了新插件"时，Claude 会自动执行以下流程：
+1. **UserPromptSubmit Hook**：每次你发送消息时，系统会自动检测插件变化
+2. **即时同步**：检测到插件安装/卸载后，立即推送到 GitHub
+3. **零干扰**：只在有变化时才输出通知，没有变化时完全静默
 
-1. **运行同步脚本**：
-   ```bash
-   cd ~/.claude/plugins/auto-manager && python3 scripts/sync-snapshot.py
-   ```
+**你只需要**：
+- 安装或卸载插件
+- 继续正常使用 Claude Code
+- 系统会自动在后台同步（通常在下次发消息时完成）
 
-2. **验证同步结果**：
-   ```bash
-   # 查看最新提交
-   git log -1 --oneline
+#### 手动立即同步（可选）
 
-   # 确认已推送
-   git status -sb
-
-   # 检查插件数量
-   cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.stdin); print(f'插件数量: {len(data[\"plugins\"])}')"
-   ```
-
-3. **关键路径**：
-   - 实际插件目录：`~/.claude/plugins/auto-manager/`
-   - Git 仓库：`git@github.com:hyhmrright/claude-plugins-snapshot.git`
-   - 快照文件：`~/.claude/plugins/auto-manager/snapshots/current.json`
-
-#### Claude AI 主动检测规则（重要！）
-
-**给 Claude AI 的指导**：当用户提及插件相关话题时，Claude 应该主动、敏锐地识别同步时机。
-
-**触发场景**（必须敏锐识别）：
-- ✅ 用户说"我装了新插件" / "我卸载了插件"
-- ✅ 用户说"更新插件同步" / "同步插件配置"
-- ✅ **用户询问插件规则**（如"你还记得 /plugin 规则吗"）→ 可能刚操作了插件，主动询问是否需要同步
-- ✅ **用户反问变化**（如"你没有发现变化吗"）→ 明确暗示有变化，立即检查同步
-- ✅ **任何提及插件的对话** → 主动问"是否需要同步插件配置？"
-
-**关键原则：主动性和敏锐度**
-- ❌ 不要机械地等待精确触发词
-- ✅ 当用户提到插件话题时，主动询问是否有变化
-- ✅ 理解暗示和反问语气（"没发现吗" = 有变化）
-- ✅ 宁可多问一句，不要漏掉同步时机
-- 📍 教训来源：用户卸载 superpowers@claude-plugins-official 后，Claude 没有第一时间响应
-
-**执行流程**：
-```bash
-cd ~/.claude/plugins/auto-manager && python3 scripts/sync-snapshot.py
-```
-
-#### 手动执行同步
-
-如果不使用 Claude，手动运行：
+如果想立即同步而不等下次发消息：
 
 ```bash
 # 推荐（跨平台）
@@ -190,10 +167,25 @@ python3 ~/.claude/plugins/auto-manager/scripts/sync-snapshot.py
 ~/.claude/plugins/auto-manager/scripts/sync-snapshot.sh
 ```
 
-这个命令会：
-1. 生成新快照
-2. 检测是否有变化
-3. 自动提交并推送到 GitHub
+#### 验证同步结果（可选）
+
+```bash
+# 查看最新提交
+cd ~/.claude/plugins/auto-manager && git log -1 --oneline
+
+# 确认已推送
+git status -sb
+
+# 检查插件数量
+cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.stdin); print(f'插件数量: {len(data[\"plugins\"])}')"
+```
+
+#### 关键路径
+
+- 实际插件目录：`~/.claude/plugins/auto-manager/`
+- Git 仓库：`git@github.com:hyhmrright/claude-plugins-snapshot.git`
+- 快照文件：`~/.claude/plugins/auto-manager/snapshots/current.json`
+- 日志文件：`~/.claude/plugins/auto-manager/logs/auto-manager.log`
 
 ### 手动触发更新（不等 24 小时）
 
