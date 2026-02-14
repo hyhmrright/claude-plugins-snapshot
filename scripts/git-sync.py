@@ -22,7 +22,7 @@ def log(message: str) -> None:
 
 
 def run_git_command(cmd: list[str], cwd: Path) -> tuple[bool, str]:
-    """执行 Git 命令"""
+    """执行 Git 命令，返回 (是否成功, 输出内容)"""
     try:
         result = subprocess.run(
             cmd, cwd=cwd, capture_output=True, text=True, timeout=60, check=False
@@ -63,20 +63,19 @@ def sync_to_git() -> bool:
 
     # 2. 添加特定文件（避免意外提交敏感文件）
     log("Adding files to Git...")
-    files_to_add = [
+    allowed_files = [
         "snapshots/current.json",
         "config.json",
         "CLAUDE.md",
         "README.md",
         ".gitignore",
     ]
+    existing_files = [f for f in allowed_files if (REPO_DIR / f).exists()]
 
-    for file_path in files_to_add:
-        # 只添加存在的文件
-        if (REPO_DIR / file_path).exists():
-            success, output = run_git_command(["git", "add", file_path], REPO_DIR)
-            if not success:
-                log(f"Warning: Failed to add {file_path}: {output}")
+    if existing_files:
+        success, output = run_git_command(["git", "add"] + existing_files, REPO_DIR)
+        if not success:
+            log(f"Warning: Failed to add files: {output}")
 
     # 验证是否有文件被添加到暂存区
     success, output = run_git_command(["git", "diff", "--cached", "--name-only"], REPO_DIR)

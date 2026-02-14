@@ -40,21 +40,18 @@ COMMAND_TIMEOUT_LONG = 120   # 插件安装/更新
 
 
 def log(message: str) -> None:
-    """输出日志消息，并管理日志文件大小（限制 10MB）"""
+    """输出日志消息，并在日志文件超过限制时自动轮转"""
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     print(f"[{timestamp}] {message}", flush=True)
 
-    # 日志轮转：如果超过限制则截断（错误不影响主流程）
+    # 日志轮转（错误不影响主流程）
     try:
         max_size = MAX_LOG_SIZE_MB * 1024 * 1024
         log_file = LOG_DIR / "auto-manager.log"
 
         if log_file.exists() and log_file.stat().st_size > max_size:
-            # 读取最后保留的内容
             keep_size = KEEP_LOG_SIZE_MB * 1024 * 1024
             file_size = log_file.stat().st_size
-
-            # 计算 seek 位置，避免超出文件大小
             seek_offset = max(-file_size, -keep_size)
 
             with open(log_file, "rb") as f:
@@ -78,11 +75,7 @@ def log(message: str) -> None:
 
 
 def load_config() -> Dict[str, Any]:
-    """加载配置文件
-
-    Returns:
-        Dict[str, Any]: 配置字典，包含 auto_install, auto_update, git_sync, snapshot 等配置项
-    """
+    """加载配置文件，不存在时返回默认配置"""
     if not CONFIG_FILE.exists():
         # 返回默认配置
         return {
@@ -96,11 +89,7 @@ def load_config() -> Dict[str, Any]:
 
 
 def get_installed_plugins() -> Set[str]:
-    """获取当前已安装的插件列表
-
-    Returns:
-        Set[str]: 已安装插件名称集合（格式：plugin-name@marketplace）
-    """
+    """获取当前已安装的插件名称集合（格式：name@marketplace）"""
     installed_file = CLAUDE_DIR / "plugins" / "installed_plugins.json"
     if not installed_file.exists():
         return set()
@@ -110,11 +99,7 @@ def get_installed_plugins() -> Set[str]:
 
 
 def get_snapshot_plugins() -> Dict[str, Any]:
-    """读取快照中的插件列表
-
-    Returns:
-        Dict[str, Any]: 快照中的插件字典，键为插件名，值为插件配置信息
-    """
+    """读取快照中的插件字典"""
     if not CURRENT_SNAPSHOT.exists():
         log("No snapshot found, skipping operations")
         return {}
@@ -171,46 +156,27 @@ def save_install_state(state: Dict[str, Any]) -> None:
 
 
 def install_plugin(plugin_name: str, plugin_info: Dict[str, Any]) -> bool:
-    """安装单个插件
-
-    Args:
-        plugin_name: 插件名称（格式：plugin-name@marketplace）
-        plugin_info: 插件配置信息字典
-
-    Returns:
-        bool: 安装成功返回 True，失败返回 False
-    """
+    """安装单个插件，返回是否成功"""
     try:
-        # 从插件名称中提取名称和市场
-        # 格式: plugin-name@marketplace-name
+        # 验证插件名称格式: name@marketplace
         parts = plugin_name.split("@")
-        if len(parts) != 2:
+        if len(parts) != 2 or not parts[0] or not parts[1]:
             log(f"✗ Invalid plugin name format (expected 'name@marketplace'): {plugin_name}")
             return False
 
-        name, marketplace = parts
+        log(f"Installing {plugin_name}...")
 
-        # 验证名称和市场非空
-        if not name or not marketplace:
-            log(f"✗ Empty plugin name or marketplace: {plugin_name}")
-            return False
-
-        full_name = f"{name}@{marketplace}"
-
-        log(f"Installing {full_name}...")
-
-        # 调用 claude plugin install
-        cmd = ["claude", "plugin", "install", full_name]
+        cmd = ["claude", "plugin", "install", plugin_name]
         result = subprocess.run(
             cmd, capture_output=True, text=True, timeout=COMMAND_TIMEOUT_LONG, check=False
         )
 
         if result.returncode == 0:
-            log(f"✓ Installed {full_name}")
+            log(f"✓ Installed {plugin_name}")
             return True
-        else:
-            log(f"✗ Failed to install {full_name}: {result.stderr}")
-            return False
+
+        log(f"✗ Failed to install {plugin_name}: {result.stderr}")
+        return False
     except subprocess.TimeoutExpired:
         log(f"✗ Timeout installing {plugin_name}")
         return False
@@ -220,15 +186,9 @@ def install_plugin(plugin_name: str, plugin_info: Dict[str, Any]) -> bool:
 
 
 def check_missing_plugins() -> Tuple[Set[str], Dict[str, Any]]:
-    """检查缺失的插件，支持失败重试
+    """检查缺失的插件，返回 (需要安装的插件集合, 快照插件字典)
 
-    重试策略:
-    - 失败后 10 分钟才能重试
-    - 最多重试 5 次
-    - 5 次失败后放弃，等待手动更新
-
-    Returns:
-        Tuple[Set[str], Dict[str, Any]]: (需要安装的插件集合, 快照中的所有插件字典)
+    重试策略: 失败后等待 RETRY_INTERVAL_SECONDS 重试，最多 MAX_RETRY_COUNT 次
     """
     snapshot_plugins = get_snapshot_plugins()
     if not snapshot_plugins:
@@ -285,11 +245,7 @@ def check_missing_plugins() -> Tuple[Set[str], Dict[str, Any]]:
 
 
 def install_missing_plugins() -> int:
-    """安装缺失的插件，并记录失败重试信息
-
-    Returns:
-        int: 成功安装的插件数量
-    """
+    """安装缺失的插件并记录重试状态，返回成功安装数量"""
     to_install, snapshot_plugins = check_missing_plugins()
 
     if not to_install:
@@ -343,14 +299,7 @@ def is_in_claude_session() -> bool:
 
 
 def should_update(config: Dict[str, Any]) -> bool:
-    """检查是否需要更新
-
-    Args:
-        config: 配置字典
-
-    Returns:
-        bool: 需要更新返回 True，否则返回 False
-    """
+    """根据配置和上次更新时间判断是否需要更新"""
     if not config["auto_update"]["enabled"]:
         log("Auto-update is disabled in config")
         return False
@@ -515,14 +464,7 @@ def create_new_snapshot() -> bool:
 
 
 def sync_to_git(config: Dict[str, Any]) -> bool:
-    """同步快照到 Git
-
-    Args:
-        config: 配置字典
-
-    Returns:
-        bool: 同步成功返回 True，失败返回 False
-    """
+    """同步快照到 Git 仓库"""
     if not config["git_sync"]["enabled"]:
         log("Git sync is disabled in config")
         return False
@@ -583,20 +525,21 @@ def cleanup_claude_backups() -> None:
         log(f"Error during backup cleanup: {e}")
 
 
+def escape_for_applescript(text: str) -> str:
+    """转义 AppleScript 字符串中的特殊字符"""
+    return text.replace('\\', '\\\\').replace('"', '\\"')
+
+
+def escape_for_powershell(text: str) -> str:
+    """转义 PowerShell 字符串中的特殊字符"""
+    return text.replace('"', '`"').replace('$', '`$')
+
+
 def send_notification(title: str, message: str) -> None:
     """发送系统通知（跨平台）"""
     import platform
 
     system = platform.system()
-
-    # 转义特殊字符防止命令注入
-    def escape_for_applescript(text: str) -> str:
-        """转义 AppleScript 字符串中的特殊字符"""
-        return text.replace('\\', '\\\\').replace('"', '\\"')
-
-    def escape_for_powershell(text: str) -> str:
-        """转义 PowerShell 字符串中的特殊字符"""
-        return text.replace('"', '`"').replace('$', '`$')
 
     try:
         if system == "Darwin":  # macOS

@@ -108,21 +108,21 @@ cat snapshots/.last-install-state.json | python3 -m json.tool
 ### 运行测试（v1.1.0 新增）
 
 ```bash
-# 安装测试依赖
-pip install -r tests/requirements.txt
+# 安装依赖（使用 uv 管理）
+uv sync
 
 # 运行所有测试
-pytest tests/ -v
+uv run pytest tests/ -v
 
 # 运行特定测试文件
-pytest tests/test_auto_manager.py -v
+uv run pytest tests/test_auto_manager.py -v
 
 # 查看代码覆盖率
-pytest tests/ --cov=scripts --cov-report=html
+uv run pytest tests/ --cov=scripts --cov-report=html
 # 然后打开 htmlcov/index.html 查看报告
 
 # 只运行特定测试类
-pytest tests/test_auto_manager.py::TestRetryLogic -v
+uv run pytest tests/test_auto_manager.py::TestRetryLogic -v
 ```
 
 ### 部署到新机器

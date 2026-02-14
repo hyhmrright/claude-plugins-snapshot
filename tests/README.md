@@ -5,25 +5,25 @@
 ### 安装依赖
 
 ```bash
-pip install pytest pytest-cov
+uv sync
 ```
 
 ### 运行所有测试
 
 ```bash
-pytest tests/ -v
+uv run pytest tests/ -v
 ```
 
 ### 运行特定测试文件
 
 ```bash
-pytest tests/test_auto_manager.py -v
+uv run pytest tests/test_auto_manager.py -v
 ```
 
 ### 查看代码覆盖率
 
 ```bash
-pytest tests/ --cov=scripts --cov-report=html
+uv run pytest tests/ --cov=scripts --cov-report=html
 ```
 
 然后打开 `htmlcov/index.html` 查看详细的覆盖率报告。

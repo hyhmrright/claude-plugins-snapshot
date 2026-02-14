@@ -168,11 +168,10 @@ def set_permissions(plugin_dir: Path) -> None:
     if platform.system() != "Windows":
         log_info("设置脚本执行权限...")
         scripts_dir = plugin_dir / "scripts"
-        # 使用 0o744：所有者可读写执行，组和其他用户只读
-        for script in scripts_dir.glob("*.sh"):
-            script.chmod(0o744)
-        for script in scripts_dir.glob("*.py"):
-            script.chmod(0o744)
+        # 0o744：所有者可读写执行，组和其他用户只读
+        for pattern in ("*.sh", "*.py"):
+            for script in scripts_dir.glob(pattern):
+                script.chmod(0o744)
 
 
 def check_snapshot(plugin_dir: Path) -> None:

@@ -1,0 +1,14 @@
+[project]
+name = "claude-plugin-auto-manager"
+version = "1.1.0"
+description = "Automatically manage Claude Code plugins - auto-install, auto-update, and cross-machine sync"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.13.12"
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-mock>=3.10.0",
+]
