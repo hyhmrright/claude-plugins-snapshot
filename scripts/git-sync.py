@@ -9,7 +9,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-SNAPSHOT_DIR = Path.home() / ".claude" / "plugins" / "auto-manager" / "snapshots"
+# Git 仓库根目录（包含 .git 目录）
+REPO_DIR = Path.home() / ".claude" / "plugins" / "auto-manager"
+# 快照目录（仓库的子目录）
+SNAPSHOT_DIR = REPO_DIR / "snapshots"
 
 
 def log(message: str) -> None:
@@ -33,7 +36,7 @@ def run_git_command(cmd: list[str], cwd: Path) -> tuple[bool, str]:
 
 def check_git_repo() -> bool:
     """检查是否是 Git 仓库"""
-    git_dir = SNAPSHOT_DIR / ".git"
+    git_dir = REPO_DIR / ".git"
     return git_dir.exists() and git_dir.is_dir()
 
 
@@ -45,11 +48,11 @@ def sync_to_git() -> bool:
 
     if not check_git_repo():
         log("Not a Git repository, skipping sync")
-        log("Run 'git init' in snapshots directory to enable Git sync")
+        log(f"Run 'git init' in {REPO_DIR} to enable Git sync")
         return False
 
     # 1. 检查是否有变更
-    success, output = run_git_command(["git", "status", "--porcelain"], SNAPSHOT_DIR)
+    success, output = run_git_command(["git", "status", "--porcelain"], REPO_DIR)
     if not success:
         log(f"Failed to check Git status: {output}")
         return False
@@ -60,7 +63,7 @@ def sync_to_git() -> bool:
 
     # 2. 添加所有文件
     log("Adding files to Git...")
-    success, output = run_git_command(["git", "add", "."], SNAPSHOT_DIR)
+    success, output = run_git_command(["git", "add", "."], REPO_DIR)
     if not success:
         log(f"Failed to add files: {output}")
         return False
@@ -71,7 +74,7 @@ def sync_to_git() -> bool:
     log(f"Committing: {commit_msg}")
 
     success, output = run_git_command(
-        ["git", "commit", "-m", commit_msg], SNAPSHOT_DIR
+        ["git", "commit", "-m", commit_msg], REPO_DIR
     )
     if not success:
         log(f"Failed to commit: {output}")
@@ -79,7 +82,7 @@ def sync_to_git() -> bool:
 
     # 4. 推送到远程
     log("Pushing to remote...")
-    success, output = run_git_command(["git", "push"], SNAPSHOT_DIR)
+    success, output = run_git_command(["git", "push"], REPO_DIR)
     if not success:
         # Push 失败不是致命错误，只记录日志
         log(f"Failed to push (this is not fatal): {output}")
