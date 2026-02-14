@@ -12,6 +12,7 @@ import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any, Dict, Set, Tuple
 
 
 # 配置路径
@@ -24,22 +25,40 @@ CURRENT_SNAPSHOT = SNAPSHOT_DIR / "current.json"
 LAST_UPDATE_FILE = SNAPSHOT_DIR / ".last-update"
 LAST_INSTALL_STATE = SNAPSHOT_DIR / ".last-install-state.json"
 
+# 常量配置
+# 日志管理
+MAX_LOG_SIZE_MB = 10
+KEEP_LOG_SIZE_MB = 8
+
+# 重试机制
+RETRY_INTERVAL_SECONDS = 600  # 10 分钟
+MAX_RETRY_COUNT = 5
+
+# 超时时间（秒）
+COMMAND_TIMEOUT_SHORT = 60   # Git 操作、快照创建
+COMMAND_TIMEOUT_LONG = 120   # 插件安装/更新
+
 
 def log(message: str) -> None:
     """输出日志消息，并管理日志文件大小（限制 10MB）"""
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     print(f"[{timestamp}] {message}", flush=True)
 
-    # 日志轮转：如果超过 10MB 则截断（错误不影响主流程）
+    # 日志轮转：如果超过限制则截断（错误不影响主流程）
     try:
-        max_size = 10 * 1024 * 1024  # 10MB
+        max_size = MAX_LOG_SIZE_MB * 1024 * 1024
         log_file = LOG_DIR / "auto-manager.log"
 
         if log_file.exists() and log_file.stat().st_size > max_size:
-            # 读取最后 8MB 的内容（保留 80% 的空间）
-            keep_size = 8 * 1024 * 1024
+            # 读取最后保留的内容
+            keep_size = KEEP_LOG_SIZE_MB * 1024 * 1024
+            file_size = log_file.stat().st_size
+
+            # 计算 seek 位置，避免超出文件大小
+            seek_offset = max(-file_size, -keep_size)
+
             with open(log_file, "rb") as f:
-                f.seek(-keep_size, 2)  # 从文件末尾往前 8MB
+                f.seek(seek_offset, 2)  # 从文件末尾往前
                 content = f.read()
 
             # 找到第一个完整行的开始位置
@@ -50,7 +69,7 @@ def log(message: str) -> None:
             # 写回截断后的内容（使用临时文件避免损坏）
             temp_log = log_file.with_suffix(".log.tmp")
             with open(temp_log, "wb") as f:
-                f.write(f"[{timestamp}] [LOG ROTATED - keeping last 8MB]\n".encode())
+                f.write(f"[{timestamp}] [LOG ROTATED - keeping last {KEEP_LOG_SIZE_MB}MB]\n".encode())
                 f.write(content)
             temp_log.rename(log_file)
     except Exception as e:
@@ -58,8 +77,12 @@ def log(message: str) -> None:
         print(f"[{timestamp}] Warning: Log rotation failed: {e}", file=sys.stderr, flush=True)
 
 
-def load_config() -> dict:
-    """加载配置文件"""
+def load_config() -> Dict[str, Any]:
+    """加载配置文件
+
+    Returns:
+        Dict[str, Any]: 配置字典，包含 auto_install, auto_update, git_sync, snapshot 等配置项
+    """
     if not CONFIG_FILE.exists():
         # 返回默认配置
         return {
@@ -72,8 +95,12 @@ def load_config() -> dict:
     return json.loads(CONFIG_FILE.read_text())
 
 
-def get_installed_plugins() -> set[str]:
-    """获取当前已安装的插件列表"""
+def get_installed_plugins() -> Set[str]:
+    """获取当前已安装的插件列表
+
+    Returns:
+        Set[str]: 已安装插件名称集合（格式：plugin-name@marketplace）
+    """
     installed_file = CLAUDE_DIR / "plugins" / "installed_plugins.json"
     if not installed_file.exists():
         return set()
@@ -82,8 +109,12 @@ def get_installed_plugins() -> set[str]:
     return set(data.get("plugins", {}).keys())
 
 
-def get_snapshot_plugins() -> dict:
-    """读取快照中的插件列表"""
+def get_snapshot_plugins() -> Dict[str, Any]:
+    """读取快照中的插件列表
+
+    Returns:
+        Dict[str, Any]: 快照中的插件字典，键为插件名，值为插件配置信息
+    """
     if not CURRENT_SNAPSHOT.exists():
         log("No snapshot found, skipping operations")
         return {}
@@ -92,7 +123,7 @@ def get_snapshot_plugins() -> dict:
     return snapshot.get("plugins", {})
 
 
-def load_install_state() -> dict:
+def load_install_state() -> Dict[str, Any]:
     """加载安装状态（支持重试机制）
 
     返回格式:
@@ -122,7 +153,7 @@ def load_install_state() -> dict:
     return state_data.get("plugins", {})
 
 
-def save_install_state(state: dict) -> None:
+def save_install_state(state: Dict[str, Any]) -> None:
     """保存安装状态（使用原子写入防止文件损坏）
 
     参数:
@@ -139,17 +170,31 @@ def save_install_state(state: dict) -> None:
     temp_file.rename(LAST_INSTALL_STATE)
 
 
-def install_plugin(plugin_name: str, plugin_info: dict) -> bool:
-    """安装单个插件"""
+def install_plugin(plugin_name: str, plugin_info: Dict[str, Any]) -> bool:
+    """安装单个插件
+
+    Args:
+        plugin_name: 插件名称（格式：plugin-name@marketplace）
+        plugin_info: 插件配置信息字典
+
+    Returns:
+        bool: 安装成功返回 True，失败返回 False
+    """
     try:
         # 从插件名称中提取名称和市场
         # 格式: plugin-name@marketplace-name
         parts = plugin_name.split("@")
         if len(parts) != 2:
-            log(f"Invalid plugin name format: {plugin_name}")
+            log(f"✗ Invalid plugin name format (expected 'name@marketplace'): {plugin_name}")
             return False
 
         name, marketplace = parts
+
+        # 验证名称和市场非空
+        if not name or not marketplace:
+            log(f"✗ Empty plugin name or marketplace: {plugin_name}")
+            return False
+
         full_name = f"{name}@{marketplace}"
 
         log(f"Installing {full_name}...")
@@ -157,7 +202,7 @@ def install_plugin(plugin_name: str, plugin_info: dict) -> bool:
         # 调用 claude plugin install
         cmd = ["claude", "plugin", "install", full_name]
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=120, check=False
+            cmd, capture_output=True, text=True, timeout=COMMAND_TIMEOUT_LONG, check=False
         )
 
         if result.returncode == 0:
@@ -174,13 +219,16 @@ def install_plugin(plugin_name: str, plugin_info: dict) -> bool:
         return False
 
 
-def check_missing_plugins() -> tuple[set[str], dict]:
+def check_missing_plugins() -> Tuple[Set[str], Dict[str, Any]]:
     """检查缺失的插件，支持失败重试
 
     重试策略:
     - 失败后 10 分钟才能重试
     - 最多重试 5 次
     - 5 次失败后放弃，等待手动更新
+
+    Returns:
+        Tuple[Set[str], Dict[str, Any]]: (需要安装的插件集合, 快照中的所有插件字典)
     """
     snapshot_plugins = get_snapshot_plugins()
     if not snapshot_plugins:
@@ -210,9 +258,9 @@ def check_missing_plugins() -> tuple[set[str], dict]:
                 to_install.add(plugin)
             elif status == "failed":
                 # 检查是否可以重试
-                if retry_count >= 5:
+                if retry_count > MAX_RETRY_COUNT:
                     # 超过最大重试次数，跳过
-                    log(f"Skipping {plugin}: exceeded max retries (5)")
+                    log(f"Skipping {plugin}: exceeded max retries ({MAX_RETRY_COUNT})")
                     continue
 
                 # 检查距离上次尝试是否超过 10 分钟
@@ -224,8 +272,8 @@ def check_missing_plugins() -> tuple[set[str], dict]:
                         last_attempt = last_attempt.replace(tzinfo=timezone.utc)
                     elapsed = (now - last_attempt).total_seconds()
 
-                    if elapsed >= 600:  # 10 分钟 = 600 秒
-                        log(f"Retrying {plugin}: {elapsed/60:.1f} minutes since last attempt (retry {retry_count + 1}/5)")
+                    if elapsed >= RETRY_INTERVAL_SECONDS:
+                        log(f"Retrying {plugin}: {elapsed/60:.1f} minutes since last attempt (retry {retry_count + 1}/{MAX_RETRY_COUNT})")
                         to_install.add(plugin)
                     else:
                         log(f"Skipping {plugin}: only {elapsed/60:.1f} minutes since last attempt (need 10)")
@@ -237,7 +285,11 @@ def check_missing_plugins() -> tuple[set[str], dict]:
 
 
 def install_missing_plugins() -> int:
-    """安装缺失的插件，并记录失败重试信息"""
+    """安装缺失的插件，并记录失败重试信息
+
+    Returns:
+        int: 成功安装的插件数量
+    """
     to_install, snapshot_plugins = check_missing_plugins()
 
     if not to_install:
@@ -267,14 +319,14 @@ def install_missing_plugins() -> int:
             # 安装失败，更新重试信息
             if plugin_name in state and state[plugin_name].get("status") == "failed":
                 # 已经失败过，增加重试计数
-                state[plugin_name]["retry_count"] = state[plugin_name].get("retry_count", 0) + 1
+                state[plugin_name]["retry_count"] = state[plugin_name].get("retry_count", 1) + 1
                 state[plugin_name]["last_attempt"] = now
             else:
-                # 首次失败（retry_count=0 表示首次失败，下次重试时会变成 1）
+                # 首次失败（retry_count=1 表示首次失败）
                 state[plugin_name] = {
                     "status": "failed",
                     "last_attempt": now,
-                    "retry_count": 0,
+                    "retry_count": 1,
                     "first_failed_at": now,
                 }
 
@@ -287,11 +339,18 @@ def install_missing_plugins() -> int:
 
 def is_in_claude_session() -> bool:
     """检测是否在 Claude Code 会话中运行"""
-    return "CLAUDECODE" in os.environ
+    return "CLAUDE_CODE_SESSION_ID" in os.environ
 
 
-def should_update(config: dict) -> bool:
-    """检查是否需要更新"""
+def should_update(config: Dict[str, Any]) -> bool:
+    """检查是否需要更新
+
+    Args:
+        config: 配置字典
+
+    Returns:
+        bool: 需要更新返回 True，否则返回 False
+    """
     if not config["auto_update"]["enabled"]:
         log("Auto-update is disabled in config")
         return False
@@ -340,7 +399,7 @@ def update_all_marketplaces() -> int:
         log("Updating all marketplaces...")
         cmd = ["claude", "plugin", "marketplace", "update"]
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=120, check=False
+            cmd, capture_output=True, text=True, timeout=COMMAND_TIMEOUT_LONG, check=False
         )
 
         if result.returncode == 0:
@@ -375,7 +434,7 @@ def update_all_plugins() -> int:
             log(f"Updating {plugin_name}...")
             cmd = ["claude", "plugin", "update", plugin_name]
             result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=120, check=False
+                cmd, capture_output=True, text=True, timeout=COMMAND_TIMEOUT_LONG, check=False
             )
 
             if result.returncode == 0:
@@ -441,7 +500,7 @@ def create_new_snapshot() -> bool:
             str(AUTO_MANAGER_DIR / "scripts" / "create-snapshot.py"),
         ]
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=60, check=False
+            cmd, capture_output=True, text=True, timeout=COMMAND_TIMEOUT_SHORT, check=False
         )
 
         if result.returncode == 0:
@@ -455,8 +514,15 @@ def create_new_snapshot() -> bool:
         return False
 
 
-def sync_to_git(config: dict) -> bool:
-    """同步快照到 Git"""
+def sync_to_git(config: Dict[str, Any]) -> bool:
+    """同步快照到 Git
+
+    Args:
+        config: 配置字典
+
+    Returns:
+        bool: 同步成功返回 True，失败返回 False
+    """
     if not config["git_sync"]["enabled"]:
         log("Git sync is disabled in config")
         return False
@@ -468,7 +534,7 @@ def sync_to_git(config: dict) -> bool:
             str(AUTO_MANAGER_DIR / "scripts" / "git-sync.py"),
         ]
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=60, check=False
+            cmd, capture_output=True, text=True, timeout=COMMAND_TIMEOUT_SHORT, check=False
         )
 
         if result.returncode == 0:
@@ -523,9 +589,20 @@ def send_notification(title: str, message: str) -> None:
 
     system = platform.system()
 
+    # 转义特殊字符防止命令注入
+    def escape_for_applescript(text: str) -> str:
+        """转义 AppleScript 字符串中的特殊字符"""
+        return text.replace('\\', '\\\\').replace('"', '\\"')
+
+    def escape_for_powershell(text: str) -> str:
+        """转义 PowerShell 字符串中的特殊字符"""
+        return text.replace('"', '`"').replace('$', '`$')
+
     try:
         if system == "Darwin":  # macOS
-            script = f'display notification "{message}" with title "Claude Plugins" subtitle "{title}"'
+            safe_title = escape_for_applescript(title)
+            safe_message = escape_for_applescript(message)
+            script = f'display notification "{safe_message}" with title "Claude Plugins" subtitle "{safe_title}"'
             subprocess.run(
                 ["osascript", "-e", script],
                 capture_output=True,
@@ -533,7 +610,7 @@ def send_notification(title: str, message: str) -> None:
                 check=False,
             )
         elif system == "Linux":  # Linux
-            # 尝试使用 notify-send
+            # notify-send 自动处理特殊字符
             subprocess.run(
                 ["notify-send", "Claude Plugins", f"{title}: {message}"],
                 capture_output=True,
@@ -542,12 +619,14 @@ def send_notification(title: str, message: str) -> None:
             )
         elif system == "Windows":  # Windows
             # 使用 PowerShell 发送通知
+            safe_title = escape_for_powershell(title)
+            safe_message = escape_for_powershell(message)
             ps_script = f"""
-            [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
+            [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
             $template = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)
             $toastXml = [xml] $template.GetXml()
-            $toastXml.GetElementsByTagName("text")[0].AppendChild($toastXml.CreateTextNode("Claude Plugins")) > $null
-            $toastXml.GetElementsByTagName("text")[1].AppendChild($toastXml.CreateTextNode("{title}: {message}")) > $null
+            $toastXml.GetElementsByTagName("text")[0].AppendChild($toastXml.CreateTextNode("Claude Plugins")) | Out-Null
+            $toastXml.GetElementsByTagName("text")[1].AppendChild($toastXml.CreateTextNode("{safe_title}: {safe_message}")) | Out-Null
             $xml = New-Object Windows.Data.Xml.Dom.XmlDocument
             $xml.LoadXml($toastXml.OuterXml)
             $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)

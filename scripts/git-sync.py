@@ -61,12 +61,28 @@ def sync_to_git() -> bool:
         log("No changes to commit")
         return True
 
-    # 2. 添加所有文件
+    # 2. 添加特定文件（避免意外提交敏感文件）
     log("Adding files to Git...")
-    success, output = run_git_command(["git", "add", "."], REPO_DIR)
-    if not success:
-        log(f"Failed to add files: {output}")
-        return False
+    files_to_add = [
+        "snapshots/current.json",
+        "config.json",
+        "CLAUDE.md",
+        "README.md",
+        ".gitignore",
+    ]
+
+    for file_path in files_to_add:
+        # 只添加存在的文件
+        if (REPO_DIR / file_path).exists():
+            success, output = run_git_command(["git", "add", file_path], REPO_DIR)
+            if not success:
+                log(f"Warning: Failed to add {file_path}: {output}")
+
+    # 验证是否有文件被添加到暂存区
+    success, output = run_git_command(["git", "diff", "--cached", "--name-only"], REPO_DIR)
+    if not success or not output.strip():
+        log("No files staged for commit")
+        return True
 
     # 3. 创建 commit
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")

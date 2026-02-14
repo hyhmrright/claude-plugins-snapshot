@@ -58,7 +58,11 @@ def create_snapshot() -> Path:
                 plugin_info = plugin_info_list[0]  # 取第一个版本
                 # 解析 marketplace 名称
                 parts = plugin_name.split("@")
-                marketplace = parts[1] if len(parts) > 1 else "unknown"
+                if len(parts) != 2 or not parts[0] or not parts[1]:
+                    log(f"Warning: Invalid plugin name format: {plugin_name}")
+                    marketplace = "unknown"
+                else:
+                    marketplace = parts[1]
 
                 snapshot["plugins"][plugin_name] = {
                     "enabled": enabled,

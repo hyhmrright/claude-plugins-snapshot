@@ -71,7 +71,7 @@ def check_dependencies() -> bool:
 def backup_config(file_path: Path) -> None:
     """备份配置文件"""
     if file_path.exists():
-        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
         backup_path = file_path.with_suffix(f".backup.{timestamp}")
         shutil.copy2(file_path, backup_path)
         log_info(f"已备份: {backup_path.name}")
@@ -168,10 +168,11 @@ def set_permissions(plugin_dir: Path) -> None:
     if platform.system() != "Windows":
         log_info("设置脚本执行权限...")
         scripts_dir = plugin_dir / "scripts"
+        # 使用 0o744：所有者可读写执行，组和其他用户只读
         for script in scripts_dir.glob("*.sh"):
-            script.chmod(0o755)
+            script.chmod(0o744)
         for script in scripts_dir.glob("*.py"):
-            script.chmod(0o755)
+            script.chmod(0o744)
 
 
 def check_snapshot(plugin_dir: Path) -> None:
