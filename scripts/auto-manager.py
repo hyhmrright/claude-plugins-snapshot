@@ -7,6 +7,7 @@ Claude Code 插件自动管理器
 """
 import argparse
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
@@ -25,9 +26,36 @@ LAST_INSTALL_STATE = SNAPSHOT_DIR / ".last-install-state.json"
 
 
 def log(message: str) -> None:
-    """输出日志消息"""
+    """输出日志消息，并管理日志文件大小（限制 10MB）"""
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     print(f"[{timestamp}] {message}", flush=True)
+
+    # 日志轮转：如果超过 10MB 则截断（错误不影响主流程）
+    try:
+        max_size = 10 * 1024 * 1024  # 10MB
+        log_file = LOG_DIR / "auto-manager.log"
+
+        if log_file.exists() and log_file.stat().st_size > max_size:
+            # 读取最后 8MB 的内容（保留 80% 的空间）
+            keep_size = 8 * 1024 * 1024
+            with open(log_file, "rb") as f:
+                f.seek(-keep_size, 2)  # 从文件末尾往前 8MB
+                content = f.read()
+
+            # 找到第一个完整行的开始位置
+            first_newline = content.find(b"\n")
+            if first_newline != -1:
+                content = content[first_newline + 1:]
+
+            # 写回截断后的内容（使用临时文件避免损坏）
+            temp_log = log_file.with_suffix(".log.tmp")
+            with open(temp_log, "wb") as f:
+                f.write(f"[{timestamp}] [LOG ROTATED - keeping last 8MB]\n".encode())
+                f.write(content)
+            temp_log.rename(log_file)
+    except Exception as e:
+        # 日志轮转失败不影响主流程，输出到 stderr
+        print(f"[{timestamp}] Warning: Log rotation failed: {e}", file=sys.stderr, flush=True)
 
 
 def load_config() -> dict:
@@ -64,22 +92,51 @@ def get_snapshot_plugins() -> dict:
     return snapshot.get("plugins", {})
 
 
-def load_install_state() -> set[str]:
-    """加载上次安装状态（避免重复安装失败的插件）"""
+def load_install_state() -> dict:
+    """加载安装状态（支持重试机制）
+
+    返回格式:
+    {
+        "plugin-name@marketplace": {
+            "status": "installed" | "failed",
+            "last_attempt": "ISO8601 timestamp",
+            "retry_count": 0-5,
+            "first_failed_at": "ISO8601 timestamp"  # 仅在失败时存在
+        }
+    }
+    """
     if not LAST_INSTALL_STATE.exists():
-        return set()
+        return {}
 
-    state = json.loads(LAST_INSTALL_STATE.read_text())
-    return set(state.get("plugins", []))
+    state_data = json.loads(LAST_INSTALL_STATE.read_text())
+
+    # 兼容旧格式（简单的 plugins 列表）
+    if "plugins" in state_data and isinstance(state_data["plugins"], list):
+        # 转换为新格式
+        return {
+            plugin: {"status": "installed", "last_attempt": state_data.get("timestamp", ""), "retry_count": 0}
+            for plugin in state_data["plugins"]
+        }
+
+    # 返回新格式
+    return state_data.get("plugins", {})
 
 
-def save_install_state(plugins: set[str]) -> None:
-    """保存当前安装状态"""
-    state = {
-        "plugins": list(plugins),
+def save_install_state(state: dict) -> None:
+    """保存安装状态（使用原子写入防止文件损坏）
+
+    参数:
+        state: 插件状态字典，格式见 load_install_state()
+    """
+    state_data = {
+        "plugins": state,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
-    LAST_INSTALL_STATE.write_text(json.dumps(state, indent=2) + "\n")
+
+    # 使用临时文件 + rename 实现原子写入（Unix 系统保证原子性）
+    temp_file = LAST_INSTALL_STATE.with_suffix(".json.tmp")
+    temp_file.write_text(json.dumps(state_data, indent=2) + "\n")
+    temp_file.rename(LAST_INSTALL_STATE)
 
 
 def install_plugin(plugin_name: str, plugin_info: dict) -> bool:
@@ -118,25 +175,69 @@ def install_plugin(plugin_name: str, plugin_info: dict) -> bool:
 
 
 def check_missing_plugins() -> tuple[set[str], dict]:
-    """检查缺失的插件"""
+    """检查缺失的插件，支持失败重试
+
+    重试策略:
+    - 失败后 10 分钟才能重试
+    - 最多重试 5 次
+    - 5 次失败后放弃，等待手动更新
+    """
     snapshot_plugins = get_snapshot_plugins()
     if not snapshot_plugins:
         return set(), {}
 
     installed = get_installed_plugins()
-    last_state = load_install_state()
+    state = load_install_state()
 
     # 计算缺失的插件
     missing = set(snapshot_plugins.keys()) - installed
 
-    # 过滤已尝试安装过的插件（避免反复失败）
-    to_install = missing - last_state
+    # 过滤需要安装的插件
+    to_install = set()
+    now = datetime.now(timezone.utc)
+
+    for plugin in missing:
+        if plugin not in state:
+            # 新的缺失插件，需要安装
+            to_install.add(plugin)
+        else:
+            plugin_state = state[plugin]
+            status = plugin_state.get("status")
+            retry_count = plugin_state.get("retry_count", 0)
+
+            if status == "installed":
+                # 已安装但现在缺失，重新安装
+                to_install.add(plugin)
+            elif status == "failed":
+                # 检查是否可以重试
+                if retry_count >= 5:
+                    # 超过最大重试次数，跳过
+                    log(f"Skipping {plugin}: exceeded max retries (5)")
+                    continue
+
+                # 检查距离上次尝试是否超过 10 分钟
+                last_attempt_str = plugin_state.get("last_attempt", "")
+                try:
+                    last_attempt = datetime.fromisoformat(last_attempt_str)
+                    # 确保时区感知（兼容旧数据）
+                    if last_attempt.tzinfo is None:
+                        last_attempt = last_attempt.replace(tzinfo=timezone.utc)
+                    elapsed = (now - last_attempt).total_seconds()
+
+                    if elapsed >= 600:  # 10 分钟 = 600 秒
+                        log(f"Retrying {plugin}: {elapsed/60:.1f} minutes since last attempt (retry {retry_count + 1}/5)")
+                        to_install.add(plugin)
+                    else:
+                        log(f"Skipping {plugin}: only {elapsed/60:.1f} minutes since last attempt (need 10)")
+                except (ValueError, TypeError):
+                    # 时间戳解析失败，允许重试
+                    to_install.add(plugin)
 
     return to_install, snapshot_plugins
 
 
 def install_missing_plugins() -> int:
-    """安装缺失的插件"""
+    """安装缺失的插件，并记录失败重试信息"""
     to_install, snapshot_plugins = check_missing_plugins()
 
     if not to_install:
@@ -145,27 +246,59 @@ def install_missing_plugins() -> int:
 
     log(f"Found {len(to_install)} missing plugins to install")
 
-    # 安装缺失的插件
+    # 加载当前状态
+    state = load_install_state()
     installed_count = 0
-    last_state = load_install_state()
+    now = datetime.now(timezone.utc).isoformat()
 
     for plugin_name in to_install:
         plugin_info = snapshot_plugins[plugin_name]
-        if install_plugin(plugin_name, plugin_info):
+        success = install_plugin(plugin_name, plugin_info)
+
+        if success:
+            # 安装成功
             installed_count += 1
-            last_state.add(plugin_name)
+            state[plugin_name] = {
+                "status": "installed",
+                "last_attempt": now,
+                "retry_count": 0,
+            }
+        else:
+            # 安装失败，更新重试信息
+            if plugin_name in state and state[plugin_name].get("status") == "failed":
+                # 已经失败过，增加重试计数
+                state[plugin_name]["retry_count"] = state[plugin_name].get("retry_count", 0) + 1
+                state[plugin_name]["last_attempt"] = now
+            else:
+                # 首次失败（retry_count=0 表示首次失败，下次重试时会变成 1）
+                state[plugin_name] = {
+                    "status": "failed",
+                    "last_attempt": now,
+                    "retry_count": 0,
+                    "first_failed_at": now,
+                }
 
     # 保存状态
-    save_install_state(last_state)
+    save_install_state(state)
 
     log(f"Auto-install completed: {installed_count}/{len(to_install)} successful")
     return installed_count
+
+
+def is_in_claude_session() -> bool:
+    """检测是否在 Claude Code 会话中运行"""
+    return "CLAUDECODE" in os.environ
 
 
 def should_update(config: dict) -> bool:
     """检查是否需要更新"""
     if not config["auto_update"]["enabled"]:
         log("Auto-update is disabled in config")
+        return False
+
+    # 检测是否在 Claude Code 会话中
+    if is_in_claude_session():
+        log("Running inside Claude Code session, skipping plugin update to avoid nested session error")
         return False
 
     interval_hours = config["auto_update"]["interval_hours"]
