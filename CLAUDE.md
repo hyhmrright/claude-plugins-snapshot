@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 这是一个 Claude Code 插件自动管理器（Plugin Auto-Manager），通过 SessionStart Hook 实现插件的自动安装、更新和跨机器同步。这是一个本地插件（`@local`），部署在 `~/.claude/plugins/auto-manager/`。
 
+**当前版本**: v1.1.0（2026-02-14）- 包含重要安全修复和代码质量改进
+
 ## 核心架构
 
 ### 三层自动化架构
@@ -22,11 +24,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - **定时更新**：根据 `config.json` 中的 `interval_hours` 配置（0=每次启动，24=每日更新）
    - **日志管理**：自动轮转，超过 10MB 时截断到 8MB
    - **备份清理**：每次启动时自动删除 Claude Code 生成的 `~/.claude.json.backup.<timestamp>` 备份文件，只保留主备份文件
+   - **常量化配置**：所有魔术数字已提取为常量（v1.1.0）
 
 3. **工具层**
-   - `create-snapshot.py`：从 Claude 配置文件生成快照
-   - `git-sync.py`：将快照同步到 Git 仓库
+   - `create-snapshot.py`：从 Claude 配置文件生成快照（含输入验证）
+   - `git-sync.py`：将快照同步到 Git 仓库（仅添加特定文件）
    - `sync-snapshot.py`：手动触发快照同步（跨平台）
+
+### 关键常量（v1.1.0 新增）
+
+所有配置常量在 `scripts/auto-manager.py` 顶部定义：
+
+```python
+# 日志管理
+MAX_LOG_SIZE_MB = 10           # 日志最大大小
+KEEP_LOG_SIZE_MB = 8           # 轮转后保留大小
+
+# 重试机制
+RETRY_INTERVAL_SECONDS = 600   # 重试间隔（10分钟）
+MAX_RETRY_COUNT = 5            # 最大重试次数
+
+# 超时时间（秒）
+COMMAND_TIMEOUT_SHORT = 60     # Git 操作、快照创建
+COMMAND_TIMEOUT_LONG = 120     # 插件安装/更新
+```
+
+**修改常量时注意**：需要同时更新代码中的引用和测试用例
 
 ### 关键数据文件
 
@@ -82,6 +105,26 @@ cat snapshots/current.json | python3 -m json.tool
 cat snapshots/.last-install-state.json | python3 -m json.tool
 ```
 
+### 运行测试（v1.1.0 新增）
+
+```bash
+# 安装测试依赖
+pip install -r tests/requirements.txt
+
+# 运行所有测试
+pytest tests/ -v
+
+# 运行特定测试文件
+pytest tests/test_auto_manager.py -v
+
+# 查看代码覆盖率
+pytest tests/ --cov=scripts --cov-report=html
+# 然后打开 htmlcov/index.html 查看报告
+
+# 只运行特定测试类
+pytest tests/test_auto_manager.py::TestRetryLogic -v
+```
+
 ### 部署到新机器
 
 ```bash
@@ -119,6 +162,7 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 
 ```json
 {
+  "version": "1.0",          // v1.1.0 新增：配置文件版本号
   "auto_install": {
     "enabled": true          // 启用/禁用自动安装缺失插件
   },
@@ -132,6 +176,9 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
   "git_sync": {
     "enabled": true,         // 是否启用 Git 同步
     "auto_push": true        // 是否自动推送到远程
+  },
+  "snapshot": {
+    "keep_versions": 10      // 历史字段，当前未使用
   }
 }
 ```
@@ -212,14 +259,15 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 }
 ```
 
-**重试逻辑**：
+**重试逻辑**（v1.1.0 修复）：
 - 每次启动时检查所有失败的插件
 - 计算距离上次尝试的时间
-- 如果 `now - last_attempt >= 10 minutes` 且 `retry_count < 5`：
+- **首次失败**：`retry_count = 1`（v1.1.0 修复：之前错误地设为 0）
+- 如果 `now - last_attempt >= RETRY_INTERVAL_SECONDS` 且 `retry_count <= MAX_RETRY_COUNT`：
   - 重试安装
   - 成功 → 从状态文件移除
   - 失败 → 增加 `retry_count`
-- 如果 `retry_count >= 5` → 跳过，记录警告日志
+- 如果 `retry_count > MAX_RETRY_COUNT` → 跳过，记录警告日志
 
 ## 跨平台支持
 
@@ -300,6 +348,14 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 2. **保持向后兼容**：修改配置格式时提供默认值
 3. **错误处理**：重要操作失败不应中断整个流程（例如日志轮转失败）
 4. **原子操作**：修改配置文件时使用临时文件避免损坏
+5. **使用常量**：不要硬编码魔术数字，使用文件顶部定义的常量（v1.1.0）
+6. **类型提示**：为新函数添加完整的类型提示 `typing.Dict[str, Any]` 等（v1.1.0）
+7. **文档字符串**：包含参数和返回值说明（v1.1.0）
+8. **输入验证**：验证所有外部输入（插件名格式、配置值等）（v1.1.0）
+9. **安全性**：
+   - 转义所有传递给 shell 的字符串（防止命令注入）
+   - 使用 UTC 时间戳（避免时区问题）
+   - Git 操作只添加特定文件，不使用 `git add .`
 
 ### 修改 Hook 配置时
 
@@ -313,12 +369,36 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 2. **向后兼容**：新增字段使用可选字段（带默认值）
 3. **Git 友好**：保持 JSON 格式一致（缩进 2 空格）
 
+### 添加新功能时
+
+1. **编写测试**：在 `tests/` 目录添加对应的测试用例（v1.1.0）
+2. **更新文档**：同时更新 CLAUDE.md 和 README.md
+3. **更新 CHANGELOG**：记录到 CHANGELOG.md 的 Unreleased 部分
+4. **代码审查**：运行 `pytest tests/ -v` 确保所有测试通过
+
+### 重要安全修复（v1.1.0）
+
+1. **会话检测环境变量**：必须使用 `CLAUDE_CODE_SESSION_ID`（不是 `CLAUDECODE`）
+2. **通知消息转义**：
+   - macOS: `escape_for_applescript()` - 转义 `\` 和 `"`
+   - Windows: `escape_for_powershell()` - 转义 `"` 和 `$`
+3. **Git 安全**：只添加白名单文件，防止敏感数据泄露
+4. **文件权限**：脚本权限使用 `0o744`（不是 `0o755`）
+
 ## Git 仓库说明
 
 - **仓库位置**：`git@github.com:hyhmrright/claude-plugins-snapshot.git`
 - **本地路径**：`~/.claude/plugins/auto-manager/`
-- **追踪文件**：`snapshots/current.json`, `config.json`, 所有脚本和 hooks
+- **追踪文件**：
+  - 配置：`config.json`, `.gitignore`
+  - 文档：`CLAUDE.md`, `README.md`, `CHANGELOG.md`, `LICENSE`
+  - 代码：`scripts/`, `hooks/`, `install.py`, `install.sh`
+  - 快照：`snapshots/current.json`
+  - 测试：`tests/` （v1.1.0 新增）
 - **忽略文件**：`logs/`, `snapshots/.last-update`, `snapshots/.last-install-state.json`
+- **Git 同步策略**（v1.1.0 安全增强）：
+  - 白名单模式：只添加特定文件到 Git
+  - 防止敏感数据泄露（.env, credentials, 私钥等）
 
 ## 多机器同步工作流
 
