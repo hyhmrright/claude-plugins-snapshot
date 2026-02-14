@@ -26,7 +26,7 @@ log_error() {
 
 # 检测当前目录
 PLUGIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PLUGIN_NAME="plugin-auto-manager"
+PLUGIN_NAME="auto-manager"
 CLAUDE_DIR="$HOME/.claude"
 SETTINGS_FILE="$CLAUDE_DIR/settings.json"
 INSTALLED_PLUGINS_FILE="$CLAUDE_DIR/plugins/installed_plugins.json"
@@ -58,7 +58,7 @@ fi
 
 # 2. 检查插件是否已安装
 if [ -f "$SETTINGS_FILE" ]; then
-    if grep -q "plugin-auto-manager@local" "$SETTINGS_FILE"; then
+    if grep -q "auto-manager" "$SETTINGS_FILE"; then
         log_warn "插件已安装在 settings.json 中"
         read -p "是否重新安装？(y/N) " -n 1 -r
         echo
@@ -100,7 +100,7 @@ if "enabledPlugins" not in settings:
     settings["enabledPlugins"] = {}
 
 # 添加插件
-settings["enabledPlugins"]["plugin-auto-manager@local"] = True
+settings["enabledPlugins"]["auto-manager"] = True
 
 # 保存
 settings_file.write_text(json.dumps(settings, indent=2) + "\n")
@@ -128,7 +128,7 @@ if "plugins" not in installed:
     installed["plugins"] = {}
 
 # 添加插件记录
-installed["plugins"]["plugin-auto-manager@local"] = [{
+installed["plugins"]["auto-manager"] = [{
     "scope": "user",
     "installPath": "$PLUGIN_DIR",
     "version": "1.0.0",

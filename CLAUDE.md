@@ -1,0 +1,332 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## 项目概述
+
+这是一个 Claude Code 插件自动管理器（Plugin Auto-Manager），通过 SessionStart Hook 实现插件的自动安装、更新和跨机器同步。这是一个本地插件（`@local`），部署在 `~/.claude/plugins/auto-manager/`。
+
+## 核心架构
+
+### 三层自动化架构
+
+1. **Hook 层** (`hooks/hooks.json`)
+   - SessionStart Hook 在每次 Claude Code 启动时触发
+   - 调用 `scripts/session-start.sh` 在后台执行（避免阻塞启动）
+   - 超时设置：30秒
+
+2. **管理层** (`scripts/auto-manager.py`)
+   - **主逻辑**：协调安装、更新、同步三大功能
+   - **智能重试**：安装失败后 10 分钟自动重试，最多 5 次，状态记录在 `.last-install-state.json`
+   - **会话检测**：自动检测是否在 Claude Code 会话中运行（检查 `CLAUDE_CODE_SESSION_ID` 环境变量）避免嵌套会话错误
+   - **定时更新**：根据 `config.json` 中的 `interval_hours` 配置（0=每次启动，24=每日更新）
+   - **日志管理**：自动轮转，超过 10MB 时截断到 8MB
+
+3. **工具层**
+   - `create-snapshot.py`：从 Claude 配置文件生成快照
+   - `git-sync.py`：将快照同步到 Git 仓库
+   - `sync-snapshot.py`：手动触发快照同步（跨平台）
+
+### 关键数据文件
+
+```
+snapshots/
+├── current.json              # 唯一快照文件（Git 追踪）
+├── .last-update              # 上次更新时间戳（本地，Git 忽略）
+└── .last-install-state.json  # 安装重试状态（本地，Git 忽略）
+
+logs/
+└── auto-manager.log          # 运行日志（本地，Git 忽略）
+```
+
+### 智能 Git 同步策略
+
+**只在以下情况推送到 GitHub**：
+- ✅ 启动时检测到插件列表变化（新增/删除插件）
+- ✅ 启动时自动安装了缺失的插件
+- ❌ 仅版本更新（自动更新插件版本）不推送
+
+**实现原理**：
+- 对比当前快照和新生成快照的插件键集合（`set(plugins.keys())`）
+- 相同 → 跳过推送（只是版本号变化）
+- 不同 → 生成快照并推送（插件列表发生变化）
+
+## 常用命令
+
+### 开发和测试
+
+```bash
+# 手动运行管理器（测试安装和更新逻辑）
+python3 scripts/auto-manager.py
+
+# 强制更新所有插件（忽略时间间隔）
+python3 scripts/auto-manager.py --force-update
+
+# 手动生成快照
+python3 scripts/create-snapshot.py
+
+# 手动同步快照到 Git（推荐，跨平台）
+python3 scripts/sync-snapshot.py
+
+# 或使用 Bash 脚本（仅 Unix 系统）
+./scripts/sync-snapshot.sh
+
+# 查看实时日志
+tail -f logs/auto-manager.log
+
+# 查看当前快照
+cat snapshots/current.json | python3 -m json.tool
+
+# 查看安装重试状态
+cat snapshots/.last-install-state.json | python3 -m json.tool
+```
+
+### 部署到新机器
+
+```bash
+# 1. 克隆仓库到 Claude 插件目录
+cd ~/.claude/plugins/
+git clone git@github.com:hyhmrright/claude-plugins-snapshot.git auto-manager
+
+# 2. 运行安装脚本（跨平台）
+cd auto-manager
+python3 install.py
+
+# 3. 重启 Claude Code
+# SessionStart Hook 会自动安装快照中的所有插件
+```
+
+### Git 操作
+
+```bash
+# 查看 Git 状态（在 auto-manager 目录下）
+git status
+
+# 查看最近提交
+git log -1 --oneline
+
+# 手动拉取最新快照
+git pull
+
+# 查看插件数量
+cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.stdin); print(f'插件数量: {len(data[\"plugins\"])}')"
+```
+
+## 配置文件说明
+
+### `config.json` 结构
+
+```json
+{
+  "auto_install": {
+    "enabled": true          // 启用/禁用自动安装缺失插件
+  },
+  "auto_update": {
+    "enabled": true,         // 启用/禁用自动更新
+    "interval_hours": 0,     // 更新间隔（小时）
+                             // 0 = 每次启动都更新
+                             // 24 = 每 24 小时更新一次
+    "notify": true           // 是否发送系统通知（macOS/Linux/Windows）
+  },
+  "git_sync": {
+    "enabled": true,         // 是否启用 Git 同步
+    "auto_push": true        // 是否自动推送到远程
+  }
+}
+```
+
+### `snapshots/current.json` 结构
+
+```json
+{
+  "version": "1.0",
+  "timestamp": "2026-02-14T03:00:13Z",
+  "plugins": {
+    "plugin-name@marketplace": {
+      "enabled": true,
+      "version": "commit-sha-or-version",
+      "marketplace": "marketplace-name",
+      "gitCommitSha": "full-commit-sha"  // 可选
+    }
+  },
+  "marketplaces": {
+    "marketplace-name": {
+      "source": "github",
+      "repo": "owner/repo",
+      "autoUpdate": true
+    }
+  }
+}
+```
+
+## 工作原理
+
+### SessionStart Hook 执行流程
+
+1. **触发时机**：每次启动 Claude Code 时
+2. **会话检测**：检查 `CLAUDE_CODE_SESSION_ID` 环境变量
+   - 如果在 Claude Code 会话中 → 跳过更新（避免嵌套会话错误）
+   - 如果不在会话中 → 正常执行
+3. **安装缺失插件**：
+   - 读取 `snapshots/current.json` 中的插件列表
+   - 对比 `~/.claude/plugins/installed_plugins.json` 中的已安装列表
+   - 安装缺失的插件
+   - 失败时记录到 `.last-install-state.json` 供后续重试
+4. **智能重试**：
+   - 读取 `.last-install-state.json` 中的失败记录
+   - 检查是否超过 10 分钟重试间隔
+   - 重试次数未超过 5 次 → 重试安装
+   - 超过 5 次 → 暂时放弃，等待手动干预
+5. **定时更新**（可配置）：
+   - 检查 `.last-update` 时间戳
+   - 如果距离上次更新超过 `interval_hours` → 执行更新
+   - `interval_hours: 0` → 每次启动都更新
+6. **更新流程**：
+   - 先更新 Marketplaces（`claude plugin update-marketplaces`）
+   - 再更新所有插件（`claude plugin update`）
+7. **Git 同步**：
+   - 生成新快照
+   - 对比插件列表是否变化
+   - 有变化 → commit 并 push
+   - 无变化 → 跳过（只是版本号更新）
+8. **系统通知**（可配置）：
+   - macOS：使用 `osascript`
+   - Linux：使用 `notify-send`
+   - Windows：使用 PowerShell Toast
+
+### 重试机制详解
+
+**状态文件格式** (`.last-install-state.json`):
+```json
+{
+  "plugin-name@marketplace": {
+    "last_attempt": "2026-02-14T03:00:13Z",
+    "retry_count": 2,
+    "error": "Installation failed: timeout"
+  }
+}
+```
+
+**重试逻辑**：
+- 每次启动时检查所有失败的插件
+- 计算距离上次尝试的时间
+- 如果 `now - last_attempt >= 10 minutes` 且 `retry_count < 5`：
+  - 重试安装
+  - 成功 → 从状态文件移除
+  - 失败 → 增加 `retry_count`
+- 如果 `retry_count >= 5` → 跳过，记录警告日志
+
+## 跨平台支持
+
+### 支持的平台
+
+| 平台 | 状态 | Claude 配置目录 | 安装脚本 | 通知系统 |
+|------|------|----------------|---------|---------|
+| macOS | ✅ | `~/.claude` | `install.py` / `install.sh` | `osascript` |
+| Linux | ✅ | `~/.claude` | `install.py` / `install.sh` | `notify-send` |
+| Windows | ✅ | `%APPDATA%\Claude` 或 `~/.claude` | `install.py` | PowerShell Toast |
+| WSL | ✅ | `~/.claude` | `install.py` / `install.sh` | 取决于环境 |
+| DevContainer | ✅ | `~/.claude` | `install.py` / `install.sh` | 可能不可用 |
+
+### 平台特定注意事项
+
+**Windows**:
+- 推荐使用 `install.py`（PowerShell 或 CMD 均可）
+- 路径使用 `%USERPROFILE%\.claude\plugins` 或 `$env:USERPROFILE\.claude\plugins`
+- 不需要 `chmod +x`，Python 脚本可直接运行
+
+**DevContainer**:
+- 需要在 `devcontainer.json` 中挂载 Claude 配置目录
+- 系统通知可能不可用（无桌面环境）
+
+**macOS/Linux**:
+- 优先使用 `install.py`（更好的跨平台兼容性）
+- `install.sh` 作为备选（纯 Bash）
+
+## 日志管理
+
+**日志轮转策略**：
+- 最大大小：10MB
+- 轮转时保留：8MB（最近的日志）
+- 实现方式：原子操作（使用临时文件）
+- 失败处理：日志轮转失败不影响主流程
+
+**日志格式**：
+```
+[2026-02-14T03:00:13Z] 日志消息
+```
+
+## 故障排查
+
+### 插件未自动安装
+
+1. 检查日志：`tail -f logs/auto-manager.log`
+2. 检查配置：`cat config.json`
+3. 检查插件是否启用：`grep "auto-manager" ~/.claude/settings.json`
+4. 手动测试：`python3 scripts/auto-manager.py`
+5. 检查重试状态：`cat snapshots/.last-install-state.json`
+
+### 更新未执行
+
+1. 检查时间戳：`cat snapshots/.last-update`
+2. 检查配置：`cat config.json | grep interval_hours`
+3. 强制更新：`python3 scripts/auto-manager.py --force-update`
+4. 检查会话环境：`echo $CLAUDE_CODE_SESSION_ID`（应为空）
+
+### Git 推送失败
+
+1. 检查 SSH：`ssh -T git@github.com`
+2. 检查远程仓库：`git remote -v`
+3. 手动推送：`cd snapshots && git push`
+4. 检查权限：确保对仓库有写权限
+
+### Hook 未触发
+
+1. 检查插件启用状态：`cat ~/.claude/settings.json | grep enabledPlugins`
+2. 检查 Hook 配置：`cat hooks/hooks.json`
+3. 重启 Claude Code
+4. 查看启动日志：`tail -f logs/auto-manager.log`
+
+## 代码修改注意事项
+
+### 修改 Python 脚本时
+
+1. **保持跨平台兼容**：使用 `Path` 而非字符串路径，避免硬编码路径分隔符
+2. **保持向后兼容**：修改配置格式时提供默认值
+3. **错误处理**：重要操作失败不应中断整个流程（例如日志轮转失败）
+4. **原子操作**：修改配置文件时使用临时文件避免损坏
+
+### 修改 Hook 配置时
+
+1. **避免阻塞**：SessionStart Hook 必须在后台执行（`&`）
+2. **超时设置**：Hook 超时应足够长（当前 30 秒），但不宜过长
+3. **日志重定向**：所有输出重定向到 `logs/auto-manager.log`
+
+### 修改快照格式时
+
+1. **保持版本号**：`version: "1.0"` 用于未来兼容性检查
+2. **向后兼容**：新增字段使用可选字段（带默认值）
+3. **Git 友好**：保持 JSON 格式一致（缩进 2 空格）
+
+## Git 仓库说明
+
+- **仓库位置**：`git@github.com:hyhmrright/claude-plugins-snapshot.git`
+- **本地路径**：`~/.claude/plugins/auto-manager/`
+- **追踪文件**：`snapshots/current.json`, `config.json`, 所有脚本和 hooks
+- **忽略文件**：`logs/`, `snapshots/.last-update`, `snapshots/.last-install-state.json`
+
+## 多机器同步工作流
+
+### 机器 A（安装新插件）
+1. 手动安装：`claude plugin install plugin-name@marketplace`
+2. 同步快照：`python3 ~/.claude/plugins/auto-manager/scripts/sync-snapshot.py`
+   - 自动生成快照
+   - 检测插件列表变化
+   - commit 并 push 到 GitHub
+
+### 机器 B（自动同步）
+1. 下次启动 Claude Code 时：
+   - SessionStart Hook 自动触发
+   - 从 Git 拉取最新快照（如果启用了 auto_pull）
+   - 检测并安装缺失的插件
+   - 根据配置决定是否更新插件

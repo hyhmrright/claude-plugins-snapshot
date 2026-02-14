@@ -98,14 +98,14 @@ def update_settings_json(plugin_dir: Path) -> bool:
             settings["enabledPlugins"] = {}
 
         # 检查是否已安装
-        if "plugin-auto-manager@local" in settings["enabledPlugins"]:
+        if "auto-manager" in settings["enabledPlugins"]:
             log_warn("插件已在 settings.json 中")
             response = input("是否重新安装？(y/N) ")
             if response.lower() != "y":
                 return True
 
         # 添加插件
-        settings["enabledPlugins"]["plugin-auto-manager@local"] = True
+        settings["enabledPlugins"]["auto-manager"] = True
 
         # 保存
         settings_file.write_text(
@@ -140,7 +140,7 @@ def update_installed_plugins(plugin_dir: Path) -> bool:
             installed["plugins"] = {}
 
         # 添加插件记录
-        installed["plugins"]["plugin-auto-manager@local"] = [
+        installed["plugins"]["auto-manager"] = [
             {
                 "scope": "user",
                 "installPath": str(plugin_dir),

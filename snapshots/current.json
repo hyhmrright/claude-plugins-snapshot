@@ -58,11 +58,10 @@
       "marketplace": "claude-plugins-official",
       "gitCommitSha": "ee2f7266264580ef92b04e6d02980396e0336fb5"
     },
-    "plugin-auto-manager@local": {
+    "auto-manager": {
       "enabled": true,
       "version": "1.0.0",
-      "scope": "user",
-      "marketplace": "local"
+      "scope": "user"
     },
     "superpowers@superpowers-marketplace": {
       "enabled": true,

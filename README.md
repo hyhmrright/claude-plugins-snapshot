@@ -486,7 +486,7 @@ git pull
 
 1. 确认插件已启用：
    ```bash
-   grep "plugin-auto-manager" ~/.claude/settings.json
+   grep "auto-manager" ~/.claude/settings.json
    ```
 
 2. 检查 Hook 配置：
