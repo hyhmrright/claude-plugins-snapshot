@@ -21,6 +21,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - **会话检测**：自动检测是否在 Claude Code 会话中运行（检查 `CLAUDE_CODE_SESSION_ID` 环境变量）避免嵌套会话错误
    - **定时更新**：根据 `config.json` 中的 `interval_hours` 配置（0=每次启动，24=每日更新）
    - **日志管理**：自动轮转，超过 10MB 时截断到 8MB
+   - **备份清理**：每次启动时自动删除 Claude Code 生成的 `~/.claude.json.backup.<timestamp>` 备份文件，只保留主备份文件
 
 3. **工具层**
    - `create-snapshot.py`：从 Claude 配置文件生成快照
@@ -164,32 +165,36 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 ### SessionStart Hook 执行流程
 
 1. **触发时机**：每次启动 Claude Code 时
-2. **会话检测**：检查 `CLAUDE_CODE_SESSION_ID` 环境变量
+2. **备份清理**：自动删除 Claude Code 生成的带时间戳的配置备份文件
+   - 删除 `~/.claude.json.backup.<timestamp>` 格式的文件
+   - 保留 `~/.claude.json.backup`（主备份文件）
+   - 目的：防止备份文件无限累积占用磁盘空间
+3. **会话检测**：检查 `CLAUDE_CODE_SESSION_ID` 环境变量
    - 如果在 Claude Code 会话中 → 跳过更新（避免嵌套会话错误）
    - 如果不在会话中 → 正常执行
-3. **安装缺失插件**：
+4. **安装缺失插件**：
    - 读取 `snapshots/current.json` 中的插件列表
    - 对比 `~/.claude/plugins/installed_plugins.json` 中的已安装列表
    - 安装缺失的插件
    - 失败时记录到 `.last-install-state.json` 供后续重试
-4. **智能重试**：
+5. **智能重试**：
    - 读取 `.last-install-state.json` 中的失败记录
    - 检查是否超过 10 分钟重试间隔
    - 重试次数未超过 5 次 → 重试安装
    - 超过 5 次 → 暂时放弃，等待手动干预
-5. **定时更新**（可配置）：
+6. **定时更新**（可配置）：
    - 检查 `.last-update` 时间戳
    - 如果距离上次更新超过 `interval_hours` → 执行更新
    - `interval_hours: 0` → 每次启动都更新
-6. **更新流程**：
+7. **更新流程**：
    - 先更新 Marketplaces（`claude plugin update-marketplaces`）
    - 再更新所有插件（`claude plugin update`）
-7. **Git 同步**：
+8. **Git 同步**：
    - 生成新快照
    - 对比插件列表是否变化
    - 有变化 → commit 并 push
    - 无变化 → 跳过（只是版本号更新）
-8. **系统通知**（可配置）：
+9. **系统通知**（可配置）：
    - macOS：使用 `osascript`
    - Linux：使用 `notify-send`
    - Windows：使用 PowerShell Toast

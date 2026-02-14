@@ -482,6 +482,41 @@ def sync_to_git(config: dict) -> bool:
         return False
 
 
+def cleanup_claude_backups() -> None:
+    """清理 Claude Code 自动生成的带时间戳的备份文件
+
+    只删除 ~/.claude.json.backup.<timestamp> 格式的文件
+    保留 ~/.claude.json.backup（主备份文件）
+    """
+    try:
+        claude_json = CLAUDE_DIR / ".claude.json"
+        parent_dir = claude_json.parent
+
+        # 查找所有 .claude.json.backup.* 文件
+        backup_files = list(parent_dir.glob(".claude.json.backup.*"))
+
+        if not backup_files:
+            log("No timestamped backup files to clean up")
+            return
+
+        log(f"Found {len(backup_files)} timestamped backup files to clean up")
+
+        # 删除所有带时间戳的备份文件
+        deleted_count = 0
+        for backup_file in backup_files:
+            try:
+                backup_file.unlink()
+                log(f"Deleted: {backup_file.name}")
+                deleted_count += 1
+            except Exception as e:
+                log(f"Failed to delete {backup_file.name}: {e}")
+
+        if deleted_count > 0:
+            log(f"✓ Cleaned up {deleted_count} backup file(s)")
+    except Exception as e:
+        log(f"Error during backup cleanup: {e}")
+
+
 def send_notification(title: str, message: str) -> None:
     """发送系统通知（跨平台）"""
     import platform
@@ -546,6 +581,9 @@ def main() -> None:
     log("========================================")
     log("Claude Plugin Auto-Manager Started")
     log("========================================")
+
+    # 清理 Claude Code 自动生成的备份文件
+    cleanup_claude_backups()
 
     # 加载配置
     config = load_config()
