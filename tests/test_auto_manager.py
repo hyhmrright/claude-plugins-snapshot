@@ -146,11 +146,69 @@ class TestGitSync:
             "CLAUDE.md",
             "README.md",
             ".gitignore",
+            "global-rules/CLAUDE.md",
         ]
 
         assert "." not in files_to_add
         assert "*" not in files_to_add
         assert all("/" not in f or f.count("/") == 1 for f in files_to_add)
+
+
+class TestGlobalRulesSync:
+    """测试全局规则同步"""
+
+    ENABLED_CONFIG = {"global_sync": {"enabled": True}}
+
+    def _setup_files(self, tmp_path, monkeypatch, source_content, target_path_suffix="target.md", target_content=None):
+        """设置源文件和目标文件路径，返回 (source, target)"""
+        source = tmp_path / "source.md"
+        source.write_text(source_content, encoding="utf-8")
+        target = tmp_path / target_path_suffix
+        if target_content is not None:
+            target.write_text(target_content, encoding="utf-8")
+        monkeypatch.setattr(_auto_manager, "GLOBAL_RULES_SOURCE", source)
+        monkeypatch.setattr(_auto_manager, "GLOBAL_RULES_TARGET", target)
+        return source, target
+
+    def test_disabled_in_config(self, capsys):
+        """测试配置禁用时跳过同步"""
+        _auto_manager.sync_global_rules({"global_sync": {"enabled": False}})
+        assert "disabled" in capsys.readouterr().out
+
+    def test_missing_config_defaults_to_disabled(self, capsys):
+        """测试缺少配置时默认禁用"""
+        _auto_manager.sync_global_rules({})
+        assert "disabled" in capsys.readouterr().out
+
+    def test_source_not_found(self, tmp_path, monkeypatch, capsys):
+        """测试源文件不存在时跳过"""
+        monkeypatch.setattr(_auto_manager, "GLOBAL_RULES_SOURCE", tmp_path / "nonexistent.md")
+        _auto_manager.sync_global_rules(self.ENABLED_CONFIG)
+        assert "not found" in capsys.readouterr().out
+
+    def test_sync_creates_target(self, tmp_path, monkeypatch):
+        """测试目标文件不存在时创建"""
+        _, target = self._setup_files(tmp_path, monkeypatch, "# Rules\n")
+        _auto_manager.sync_global_rules(self.ENABLED_CONFIG)
+        assert target.read_text(encoding="utf-8") == "# Rules\n"
+
+    def test_unchanged_content_skipped(self, tmp_path, monkeypatch, capsys):
+        """测试内容未变化时跳过"""
+        self._setup_files(tmp_path, monkeypatch, "# Rules\n", target_content="# Rules\n")
+        _auto_manager.sync_global_rules(self.ENABLED_CONFIG)
+        assert "unchanged" in capsys.readouterr().out
+
+    def test_changed_content_synced(self, tmp_path, monkeypatch):
+        """测试内容变化时同步"""
+        _, target = self._setup_files(tmp_path, monkeypatch, "# New Rules\n", target_content="# Old Rules\n")
+        _auto_manager.sync_global_rules(self.ENABLED_CONFIG)
+        assert target.read_text(encoding="utf-8") == "# New Rules\n"
+
+    def test_creates_parent_directory(self, tmp_path, monkeypatch):
+        """测试目标父目录不存在时自动创建"""
+        _, target = self._setup_files(tmp_path, monkeypatch, "# Rules\n", target_path_suffix="subdir/target.md")
+        _auto_manager.sync_global_rules(self.ENABLED_CONFIG)
+        assert target.read_text(encoding="utf-8") == "# Rules\n"
 
 
 def test_constants_have_expected_values():

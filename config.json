@@ -12,6 +12,9 @@
     "enabled": true,
     "auto_push": true
   },
+  "global_sync": {
+    "enabled": true
+  },
   "snapshot": {
     "keep_versions": 10
   }

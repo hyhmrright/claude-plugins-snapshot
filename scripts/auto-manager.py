@@ -24,6 +24,8 @@ CONFIG_FILE = AUTO_MANAGER_DIR / "config.json"
 CURRENT_SNAPSHOT = SNAPSHOT_DIR / "current.json"
 LAST_UPDATE_FILE = SNAPSHOT_DIR / ".last-update"
 LAST_INSTALL_STATE = SNAPSHOT_DIR / ".last-install-state.json"
+GLOBAL_RULES_SOURCE = AUTO_MANAGER_DIR / "global-rules" / "CLAUDE.md"
+GLOBAL_RULES_TARGET = CLAUDE_DIR / "CLAUDE.md"
 
 # 常量配置
 # 日志管理
@@ -82,6 +84,7 @@ def load_config() -> Dict[str, Any]:
             "auto_install": {"enabled": True},
             "auto_update": {"enabled": True, "interval_hours": 24, "notify": True},
             "git_sync": {"enabled": True, "auto_push": True},
+            "global_sync": {"enabled": True},
             "snapshot": {"keep_versions": 10},
         }
 
@@ -490,6 +493,42 @@ def sync_to_git(config: Dict[str, Any]) -> bool:
         return False
 
 
+def sync_global_rules(config: Dict[str, Any]) -> None:
+    """将仓库中的全局规则同步到 ~/.claude/CLAUDE.md
+
+    只在源文件存在且内容有变化时更新目标文件。
+    """
+    global_sync = config.get("global_sync", {})
+    if not global_sync.get("enabled", False):
+        log("Global rules sync is disabled in config")
+        return
+
+    if not GLOBAL_RULES_SOURCE.exists():
+        log("Global rules source not found, skipping sync")
+        return
+
+    try:
+        source_content = GLOBAL_RULES_SOURCE.read_text(encoding="utf-8")
+
+        # 只在内容变化时更新
+        if GLOBAL_RULES_TARGET.exists():
+            target_content = GLOBAL_RULES_TARGET.read_text(encoding="utf-8")
+            if source_content == target_content:
+                log("Global rules unchanged, skipping sync")
+                return
+
+        # 确保目标目录存在
+        GLOBAL_RULES_TARGET.parent.mkdir(parents=True, exist_ok=True)
+
+        # 使用临时文件 + rename 实现原子写入
+        temp_file = GLOBAL_RULES_TARGET.with_suffix(".md.tmp")
+        temp_file.write_text(source_content, encoding="utf-8")
+        temp_file.rename(GLOBAL_RULES_TARGET)
+        log(f"✓ Global rules synced to {GLOBAL_RULES_TARGET}")
+    except Exception as e:
+        log(f"Error syncing global rules: {e}")
+
+
 def cleanup_claude_backups() -> None:
     """清理 Claude Code 自动生成的带时间戳的备份文件
 
@@ -625,7 +664,10 @@ def main() -> None:
     else:
         log("Auto-install is disabled in config")
 
-    # 2. 检查是否需要更新
+    # 2. 同步全局规则到 ~/.claude/CLAUDE.md
+    sync_global_rules(config)
+
+    # 3. 检查是否需要更新
     if args.force_update or should_update(config):
         # 先更新 marketplaces
         marketplace_updated = update_all_marketplaces()
@@ -644,7 +686,7 @@ def main() -> None:
         # 更新时间戳
         update_timestamp()
 
-    # 3. 只在插件列表变化时才创建快照并同步到 Git
+    # 4. 只在插件列表变化时才创建快照并同步到 Git
     if plugins_changed or snapshot_has_changes():
         log("Plugin list changed, creating snapshot and syncing to Git...")
 

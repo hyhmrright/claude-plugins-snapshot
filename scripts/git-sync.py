@@ -69,6 +69,7 @@ def sync_to_git() -> bool:
         "CLAUDE.md",
         "README.md",
         ".gitignore",
+        "global-rules/CLAUDE.md",
     ]
     existing_files = [f for f in allowed_files if (REPO_DIR / f).exists()]
 

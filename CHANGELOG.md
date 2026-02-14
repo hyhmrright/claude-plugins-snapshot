@@ -5,6 +5,13 @@ All notable changes to Claude Plugin Auto-Manager will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Global rules sync: automatically sync `global-rules/CLAUDE.md` to `~/.claude/CLAUDE.md` across machines
+- New `global_sync` configuration section in `config.json`
+- `global-rules/CLAUDE.md` added to git-sync whitelist
+
 ## [1.1.0] - 2026-02-14
 
 ### Fixed
