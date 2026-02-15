@@ -25,7 +25,7 @@ This is a Claude Code Plugin Auto-Manager that implements automatic plugin insta
    - **Smart retry**: Auto-retry 10 minutes after installation failure, up to 5 attempts, state recorded in `.last-install-state.json`
    - **Session detection**: Auto-detects if running inside a Claude Code session (checks `CLAUDECODE` environment variable) to avoid nested session errors
    - **Self-sync**: Auto `git pull` on startup to fetch latest snapshot and config
-   - **Self-registration**: Ensures itself is registered in `installed_plugins.json`, preventing Hook loss from plugin operations overwriting the file
+   - **Self-registration**: Ensures itself is registered in `installed_plugins.json` on startup and after each plugin install/update, preventing Hook loss from Claude Code rebuilding the file
    - **Per-marketplace updates**: Reads `known_marketplaces.json` and updates each marketplace individually (with name validation)
    - **Scheduled updates**: Based on `interval_hours` configuration in `config.json` (0=every startup, 24=daily update)
    - **Log management**: Auto-rotation, truncates to 8MB when exceeding 10MB
@@ -247,6 +247,7 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
    - Compare with installed list in `~/.claude/plugins/installed_plugins.json`
    - Install missing plugins
    - Record failures to `.last-install-state.json` for later retry
+   - **Re-register self after install** (`claude plugin install` rebuilds `installed_plugins.json`)
 7. **Global rules sync**:
    - Read `global-rules/CLAUDE.md`
    - Compare with `~/.claude/CLAUDE.md` contents
@@ -265,6 +266,7 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
     - First update each Marketplace individually (`claude plugin marketplace update <name>`)
     - Reads all marketplaces from `~/.claude/plugins/known_marketplaces.json`
     - Then update each installed plugin individually (`claude plugin update <name>`)
+    - **Re-register self after update** (`claude plugin update` rebuilds `installed_plugins.json`)
 11. **Git sync**:
     - Generate new snapshot
     - Compare if plugin list has changed

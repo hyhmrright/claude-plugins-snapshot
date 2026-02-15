@@ -12,7 +12,7 @@ Automatically manage Claude Code plugin installation and updates, with cross-mac
 - ✅ **Per-marketplace Updates**: Reads all known marketplaces and updates each individually
 - ✅ **Git Sync**: Snapshots automatically synced to GitHub for multi-machine sharing
 - ✅ **Self-sync**: Auto `git pull` on startup to fetch latest snapshot and config
-- ✅ **Self-registration**: Prevents Hook loss when plugin operations overwrite `installed_plugins.json`
+- ✅ **Self-registration**: Auto-registers on startup and after plugin operations, preventing Hook loss when `installed_plugins.json` is rebuilt
 - ✅ **Global Rules Sync**: Auto-sync `global-rules/CLAUDE.md` to `~/.claude/CLAUDE.md`
 - ✅ **Cross-platform Notifications**: System notifications after updates (macOS/Linux/Windows)
 - ✅ **Background Execution**: Does not block Claude startup

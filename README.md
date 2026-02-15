@@ -12,7 +12,7 @@
 - ✅ **Marketplace 逐个更新**：自动读取所有已知 marketplace 并逐个更新
 - ✅ **Git 同步**：快照自动同步到 GitHub，支持多机器共享
 - ✅ **仓库自同步**：启动时自动 `git pull` 拉取最新快照和配置
-- ✅ **自注册机制**：防止插件操作覆盖 `installed_plugins.json` 导致 Hook 丢失
+- ✅ **自注册机制**：启动时及插件操作后自动注册，防止 `installed_plugins.json` 被重建导致 Hook 丢失
 - ✅ **全局规则同步**：自动同步 `global-rules/CLAUDE.md` 到 `~/.claude/CLAUDE.md`
 - ✅ **跨平台通知**：更新完成后发送系统通知（macOS/Linux/Windows）
 - ✅ **后台执行**：不阻塞 Claude 启动

@@ -25,7 +25,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - **智能重试**：安装失败后 10 分钟自动重试，最多 5 次，状态记录在 `.last-install-state.json`
    - **会话检测**：自动检测是否在 Claude Code 会话中运行（检查 `CLAUDECODE` 环境变量）避免嵌套会话错误
    - **仓库自同步**：启动时自动 `git pull` 拉取最新快照和配置
-   - **自注册机制**：确保自身在 `installed_plugins.json` 中注册，防止被插件操作覆盖导致 Hook 丢失
+   - **自注册机制**：启动时及每次插件安装/更新后，确保自身在 `installed_plugins.json` 中注册，防止被 Claude Code 重建文件导致 Hook 丢失
    - **Marketplace 逐个更新**：读取 `known_marketplaces.json` 逐个更新所有 marketplace（含名称验证）
    - **定时更新**：根据 `config.json` 中的 `interval_hours` 配置（0=每次启动，24=每日更新）
    - **日志管理**：自动轮转，超过 10MB 时截断到 8MB
@@ -247,6 +247,7 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
    - 对比 `~/.claude/plugins/installed_plugins.json` 中的已安装列表
    - 安装缺失的插件
    - 失败时记录到 `.last-install-state.json` 供后续重试
+   - **安装后重新注册自身**（`claude plugin install` 会重建 `installed_plugins.json`）
 7. **全局规则同步**：
    - 读取 `global-rules/CLAUDE.md`
    - 对比 `~/.claude/CLAUDE.md` 内容
@@ -265,6 +266,7 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
     - 先逐个更新 Marketplaces（`claude plugin marketplace update <name>`）
     - 从 `~/.claude/plugins/known_marketplaces.json` 读取所有 marketplace
     - 再逐个更新所有已安装插件（`claude plugin update <name>`）
+    - **更新后重新注册自身**（`claude plugin update` 会重建 `installed_plugins.json`）
 11. **Git 同步**：
     - 生成新快照
     - 对比插件列表是否变化

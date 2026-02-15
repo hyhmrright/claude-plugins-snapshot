@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Session detection environment variable: revert v1.1.0 change back to `CLAUDECODE` (confirmed this is the variable actually set by claude CLI; `CLAUDE_CODE_SESSION_ID` was incorrect)
+- Self-registration deadlock: call `ensure_self_registered()` after plugin install/update (not just on startup), because `claude plugin install/update` rebuilds `installed_plugins.json` and drops auto-manager registration
 
 ## [1.1.0] - 2026-02-14
 
