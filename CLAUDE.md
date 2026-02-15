@@ -241,7 +241,7 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 5. **会话检测**：检查 `CLAUDECODE` 环境变量
    - 如果在 Claude Code 会话中 → 跳过更新（避免嵌套会话错误）
    - 如果不在会话中 → 正常执行
-   - `session-start.py` 在启动后台进程前会 unset 此变量
+   - `session-start.sh` 在启动后台进程前会 unset 此变量
 6. **安装缺失插件**：
    - 读取 `snapshots/current.json` 中的插件列表
    - 对比 `~/.claude/plugins/installed_plugins.json` 中的已安装列表

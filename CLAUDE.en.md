@@ -241,7 +241,7 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 5. **Session detection**: Checks `CLAUDECODE` environment variable
    - If inside a Claude Code session → Skip updates (avoid nested session errors)
    - If not in a session → Execute normally
-   - `session-start.py` unsets this variable before launching the background process
+   - `session-start.sh` unsets this variable before launching the background process
 6. **Install missing plugins**:
    - Read plugin list from `snapshots/current.json`
    - Compare with installed list in `~/.claude/plugins/installed_plugins.json`
