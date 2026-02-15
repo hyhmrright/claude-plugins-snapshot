@@ -8,11 +8,12 @@ Claude Code 插件自动管理器
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, Set, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
 
 # 配置路径
@@ -26,6 +27,7 @@ LAST_UPDATE_FILE = SNAPSHOT_DIR / ".last-update"
 LAST_INSTALL_STATE = SNAPSHOT_DIR / ".last-install-state.json"
 GLOBAL_RULES_SOURCE = AUTO_MANAGER_DIR / "global-rules" / "CLAUDE.md"
 GLOBAL_RULES_TARGET = CLAUDE_DIR / "CLAUDE.md"
+KNOWN_MARKETPLACES_FILE = CLAUDE_DIR / "plugins" / "known_marketplaces.json"
 
 # 常量配置
 # 日志管理
@@ -345,27 +347,88 @@ def should_update(config: Dict[str, Any]) -> bool:
     return False
 
 
-def update_all_marketplaces() -> int:
-    """更新所有 Marketplaces"""
+def _is_valid_marketplace_name(name: str) -> bool:
+    """验证 marketplace 名称格式（仅允许字母、数字、连字符、下划线）"""
+    return bool(re.match(r"^[a-zA-Z0-9_-]+$", name))
+
+
+def get_all_marketplaces() -> List[str]:
+    """读取所有已知的 marketplace 名称列表
+
+    从 ~/.claude/plugins/known_marketplaces.json 读取。
+    文件不存在或读取失败时返回空列表。
+    名称格式无效的 marketplace 会被跳过。
+    """
+    if not KNOWN_MARKETPLACES_FILE.exists():
+        log(f"Known marketplaces file not found: {KNOWN_MARKETPLACES_FILE}")
+        return []
+
     try:
-        log("Updating all marketplaces...")
-        cmd = ["claude", "plugin", "marketplace", "update"]
+        data = json.loads(KNOWN_MARKETPLACES_FILE.read_text())
+        names: List[str] = []
+        invalid: List[str] = []
+        for k in data:
+            if _is_valid_marketplace_name(k):
+                names.append(k)
+            else:
+                invalid.append(k)
+        if invalid:
+            log(f"Skipping invalid marketplace names: {', '.join(invalid)}")
+        log(f"Found {len(names)} marketplace(s): {', '.join(names)}")
+        return names
+    except Exception as e:
+        log(f"Error reading known marketplaces: {e}")
+        return []
+
+
+def _update_single_marketplace(name: str) -> bool:
+    """更新单个 marketplace，返回是否成功
+
+    参数:
+        name: marketplace 名称，传入空字符串时执行无参数的默认更新命令
+    """
+    label = name if name else "default"
+    cmd = ["claude", "plugin", "marketplace", "update"]
+    if name:
+        cmd.append(name)
+
+    try:
+        log(f"Updating marketplace: {label}...")
         result = subprocess.run(
             cmd, capture_output=True, text=True, timeout=COMMAND_TIMEOUT_LONG, check=False
         )
 
         if result.returncode == 0:
-            log("✓ All marketplaces updated")
-            return 1
-        else:
-            log(f"✗ Failed to update marketplaces: {result.stderr}")
-            return 0
+            log(f"✓ Updated marketplace: {label}")
+            return True
+
+        log(f"✗ Failed to update marketplace {label}: {result.stderr}")
+        return False
     except subprocess.TimeoutExpired:
-        log("✗ Timeout updating marketplaces")
-        return 0
+        log(f"✗ Timeout updating marketplace: {label}")
+        return False
     except Exception as e:
-        log(f"✗ Error updating marketplaces: {e}")
-        return 0
+        log(f"✗ Error updating marketplace {label}: {e}")
+        return False
+
+
+def update_all_marketplaces() -> int:
+    """逐个更新所有 Marketplaces，返回成功更新的数量
+
+    读取 known_marketplaces.json 获取所有 marketplace 名称，
+    逐个执行 `claude plugin marketplace update <name>`。
+    如果读取失败，回退到无参数命令（只更新官方 marketplace）。
+    """
+    marketplaces = get_all_marketplaces()
+
+    if not marketplaces:
+        log("No marketplaces found, falling back to default update command")
+        return 1 if _update_single_marketplace("") else 0
+
+    log(f"Updating {len(marketplaces)} marketplace(s)...")
+    success_count = sum(1 for name in marketplaces if _update_single_marketplace(name))
+    log(f"Marketplace update completed: {success_count}/{len(marketplaces)} successful")
+    return success_count
 
 
 def update_all_plugins() -> int:

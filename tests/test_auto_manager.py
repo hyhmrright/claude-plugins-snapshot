@@ -17,6 +17,8 @@ _auto_manager = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_auto_manager)
 
 # Import constants and functions from the module under test
+get_all_marketplaces = _auto_manager.get_all_marketplaces
+update_all_marketplaces = _auto_manager.update_all_marketplaces
 MAX_RETRY_COUNT = _auto_manager.MAX_RETRY_COUNT
 MAX_LOG_SIZE_MB = _auto_manager.MAX_LOG_SIZE_MB
 KEEP_LOG_SIZE_MB = _auto_manager.KEEP_LOG_SIZE_MB
@@ -209,6 +211,120 @@ class TestGlobalRulesSync:
         _, target = self._setup_files(tmp_path, monkeypatch, "# Rules\n", target_path_suffix="subdir/target.md")
         _auto_manager.sync_global_rules(self.ENABLED_CONFIG)
         assert target.read_text(encoding="utf-8") == "# Rules\n"
+
+
+class TestMarketplaceUpdate:
+    """测试 Marketplace 更新逻辑"""
+
+    @staticmethod
+    def _write_marketplaces(tmp_path, content):
+        """写入 known_marketplaces.json 并返回文件路径"""
+        mp_file = tmp_path / "known_marketplaces.json"
+        mp_file.write_text(content)
+        return mp_file
+
+    @staticmethod
+    def _mock_subprocess_success(monkeypatch):
+        """模拟 subprocess.run 全部成功，返回记录调用的列表"""
+        calls = []
+
+        def mock_run(cmd, **kwargs):
+            calls.append(cmd)
+
+            class Result:
+                returncode = 0
+                stdout = ""
+                stderr = ""
+
+            return Result()
+
+        monkeypatch.setattr(_auto_manager.subprocess, "run", mock_run)
+        return calls
+
+    def test_get_all_marketplaces_reads_file(self, tmp_path, monkeypatch):
+        """测试正常读取 known_marketplaces.json"""
+        mp_file = self._write_marketplaces(tmp_path, '{"official": {}, "superpowers-marketplace": {}}')
+        monkeypatch.setattr(_auto_manager, "KNOWN_MARKETPLACES_FILE", mp_file)
+
+        result = get_all_marketplaces()
+        assert len(result) == 2
+        assert "official" in result
+        assert "superpowers-marketplace" in result
+
+    def test_get_all_marketplaces_file_not_found(self, tmp_path, monkeypatch):
+        """测试文件不存在时返回空列表"""
+        monkeypatch.setattr(_auto_manager, "KNOWN_MARKETPLACES_FILE", tmp_path / "nonexistent.json")
+
+        result = get_all_marketplaces()
+        assert result == []
+
+    def test_get_all_marketplaces_invalid_json(self, tmp_path, monkeypatch):
+        """测试 JSON 格式错误时返回空列表"""
+        mp_file = self._write_marketplaces(tmp_path, "not valid json")
+        monkeypatch.setattr(_auto_manager, "KNOWN_MARKETPLACES_FILE", mp_file)
+
+        result = get_all_marketplaces()
+        assert result == []
+
+    def test_get_all_marketplaces_empty_file(self, tmp_path, monkeypatch):
+        """测试空对象时返回空列表"""
+        mp_file = self._write_marketplaces(tmp_path, "{}")
+        monkeypatch.setattr(_auto_manager, "KNOWN_MARKETPLACES_FILE", mp_file)
+
+        result = get_all_marketplaces()
+        assert result == []
+
+    def test_update_all_marketplaces_calls_each(self, tmp_path, monkeypatch):
+        """测试 update_all_marketplaces 逐个更新每个 marketplace"""
+        mp_file = self._write_marketplaces(tmp_path, '{"official": {}, "superpowers-marketplace": {}}')
+        monkeypatch.setattr(_auto_manager, "KNOWN_MARKETPLACES_FILE", mp_file)
+        calls = self._mock_subprocess_success(monkeypatch)
+
+        result = update_all_marketplaces()
+        assert result == 2
+        assert ["claude", "plugin", "marketplace", "update", "official"] in calls
+        assert ["claude", "plugin", "marketplace", "update", "superpowers-marketplace"] in calls
+
+    def test_update_all_marketplaces_fallback(self, tmp_path, monkeypatch):
+        """测试读取失败时回退到无参数命令"""
+        monkeypatch.setattr(_auto_manager, "KNOWN_MARKETPLACES_FILE", tmp_path / "nonexistent.json")
+        calls = self._mock_subprocess_success(monkeypatch)
+
+        result = update_all_marketplaces()
+        assert result == 1
+        assert ["claude", "plugin", "marketplace", "update"] in calls
+
+    def test_update_all_marketplaces_partial_failure(self, tmp_path, monkeypatch):
+        """测试部分 marketplace 更新失败时返回成功数量"""
+        mp_file = self._write_marketplaces(tmp_path, '{"a": {}, "b": {}, "c": {}}')
+        monkeypatch.setattr(_auto_manager, "KNOWN_MARKETPLACES_FILE", mp_file)
+
+        def mock_run(cmd, **kwargs):
+            class Result:
+                stdout = ""
+                stderr = "error"
+                returncode = 1 if cmd[-1] == "b" else 0
+
+            return Result()
+
+        monkeypatch.setattr(_auto_manager.subprocess, "run", mock_run)
+
+        result = update_all_marketplaces()
+        assert result == 2  # a and c succeed, b fails
+
+    def test_get_all_marketplaces_skips_invalid_names(self, tmp_path, monkeypatch):
+        """测试跳过格式无效的 marketplace 名称"""
+        mp_file = self._write_marketplaces(
+            tmp_path, '{"valid-name": {}, "also_valid": {}, "bad name with spaces": {}, "../traversal": {}}'
+        )
+        monkeypatch.setattr(_auto_manager, "KNOWN_MARKETPLACES_FILE", mp_file)
+
+        result = get_all_marketplaces()
+        assert "valid-name" in result
+        assert "also_valid" in result
+        assert "bad name with spaces" not in result
+        assert "../traversal" not in result
+        assert len(result) == 2
 
 
 def test_constants_have_expected_values():
