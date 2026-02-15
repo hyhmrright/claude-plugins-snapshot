@@ -299,8 +299,13 @@ def install_missing_plugins() -> int:
 
 
 def is_in_claude_session() -> bool:
-    """检测是否在 Claude Code 会话中运行"""
-    return "CLAUDE_CODE_SESSION_ID" in os.environ
+    """检测是否在 Claude Code 会话中运行
+
+    claude CLI 使用 CLAUDECODE 环境变量检测嵌套会话。
+    session-start.sh 在启动后台进程前会 unset 这些变量，
+    所以正常的 Hook 触发不会命中此检测。
+    """
+    return "CLAUDECODE" in os.environ
 
 
 def should_update(config: Dict[str, Any]) -> bool:

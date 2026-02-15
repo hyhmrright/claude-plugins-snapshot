@@ -13,6 +13,9 @@ LOG_FILE="$PLUGIN_ROOT/logs/auto-manager.log"
 # 确保日志目录存在
 mkdir -p "$(dirname "$LOG_FILE")"
 
+# 清除嵌套会话检测环境变量，允许后台进程执行 claude 子命令
+unset CLAUDECODE CLAUDE_CODE_SESSION_ID
+
 # 在后台执行自动管理器，输出重定向到日志文件
 {
   echo "========================================" >> "$LOG_FILE" 2>&1
