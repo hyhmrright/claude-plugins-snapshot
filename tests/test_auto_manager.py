@@ -3,6 +3,7 @@
 Unit tests for auto-manager.py
 """
 import importlib.util
+import json
 from datetime import datetime, timezone
 
 import pytest
@@ -17,6 +18,7 @@ _auto_manager = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_auto_manager)
 
 # Import constants and functions from the module under test
+ensure_self_registered = _auto_manager.ensure_self_registered
 get_all_marketplaces = _auto_manager.get_all_marketplaces
 sync_self_repo = _auto_manager.sync_self_repo
 update_all_marketplaces = _auto_manager.update_all_marketplaces
@@ -184,6 +186,44 @@ class TestSyncSelfRepo:
 
         assert captured["cmd"] == ["git", "pull", "--ff-only"]
         assert captured["kwargs"]["cwd"] == str(_auto_manager.AUTO_MANAGER_DIR)
+
+
+class TestEnsureSelfRegistered:
+    """测试 auto-manager 自注册机制"""
+
+    def test_registers_when_missing(self, tmp_path, monkeypatch):
+        """测试 auto-manager 不在 installed_plugins.json 时自动注册"""
+        installed_file = tmp_path / "installed_plugins.json"
+        installed_file.write_text('{"version": 2, "plugins": {}}')
+        monkeypatch.setattr(_auto_manager, "CLAUDE_DIR", tmp_path)
+        # Make the file path match what the function expects
+        (tmp_path / "plugins").mkdir()
+        installed = tmp_path / "plugins" / "installed_plugins.json"
+        installed.write_text('{"version": 2, "plugins": {}}')
+
+        ensure_self_registered()
+
+        data = json.loads(installed.read_text())
+        assert "auto-manager" in data["plugins"]
+        assert data["plugins"]["auto-manager"][0]["scope"] == "user"
+
+    def test_skips_when_already_registered(self, tmp_path, monkeypatch):
+        """测试已注册时不重复注册"""
+        (tmp_path / "plugins").mkdir()
+        installed = tmp_path / "plugins" / "installed_plugins.json"
+        original = '{"version": 2, "plugins": {"auto-manager": [{"scope": "user"}]}}'
+        installed.write_text(original)
+        monkeypatch.setattr(_auto_manager, "CLAUDE_DIR", tmp_path)
+
+        ensure_self_registered()
+
+        # Content should be unchanged
+        assert json.loads(installed.read_text()) == json.loads(original)
+
+    def test_handles_missing_file(self, tmp_path, monkeypatch):
+        """测试文件不存在时不报错"""
+        monkeypatch.setattr(_auto_manager, "CLAUDE_DIR", tmp_path / "nonexistent")
+        ensure_self_registered()  # Should not raise
 
 
 class TestGitSync:

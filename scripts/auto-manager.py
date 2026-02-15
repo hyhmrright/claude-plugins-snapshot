@@ -570,6 +570,45 @@ def sync_self_repo() -> bool:
         return False
 
 
+def ensure_self_registered() -> None:
+    """确保 auto-manager 自身在 installed_plugins.json 中注册
+
+    Claude Code 的插件操作可能会重建 installed_plugins.json，
+    导致本地插件 auto-manager 的注册信息丢失，Hook 不再被触发。
+    每次启动时检查并修复。
+    """
+    installed_file = CLAUDE_DIR / "plugins" / "installed_plugins.json"
+    if not installed_file.exists():
+        return
+
+    try:
+        data = json.loads(installed_file.read_text())
+        plugins = data.get("plugins", {})
+
+        if "auto-manager" in plugins:
+            return
+
+        log("auto-manager not found in installed_plugins.json, re-registering...")
+        now = datetime.now(timezone.utc).isoformat()
+        plugins["auto-manager"] = [
+            {
+                "scope": "user",
+                "installPath": str(AUTO_MANAGER_DIR),
+                "version": "1.0.0",
+                "installedAt": now,
+                "lastUpdated": now,
+            }
+        ]
+        data["plugins"] = plugins
+
+        temp_file = installed_file.with_suffix(".json.tmp")
+        temp_file.write_text(json.dumps(data, indent=4) + "\n")
+        temp_file.rename(installed_file)
+        log("✓ auto-manager re-registered in installed_plugins.json")
+    except Exception as e:
+        log(f"Error ensuring self-registration: {e}")
+
+
 def sync_to_git(config: Dict[str, Any]) -> bool:
     """同步快照到 Git 仓库"""
     if not config["git_sync"]["enabled"]:
@@ -749,6 +788,9 @@ def main() -> None:
 
     # 清理 Claude Code 自动生成的备份文件
     cleanup_claude_backups()
+
+    # 确保自身在 installed_plugins.json 中注册（防止被插件更新操作覆盖）
+    ensure_self_registered()
 
     # 0. 同步 auto-manager 仓库自身（拉取最新快照和配置）
     # 在 load_config() 之前执行，确保使用远程最新的配置和快照。
