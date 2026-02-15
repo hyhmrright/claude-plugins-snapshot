@@ -16,8 +16,8 @@ This is a Claude Code Plugin Auto-Manager that implements automatic plugin insta
 
 1. **Hook Layer** (`hooks/hooks.json`)
    - SessionStart Hook triggers on every Claude Code startup
-   - Calls `scripts/session-start.py` (cross-platform Python entry point) for background execution (avoids blocking startup)
-   - `scripts/session-start.sh` retained for backward compatibility (no longer the Hook entry point)
+   - Calls `scripts/session-start.sh` for background execution (avoids blocking startup)
+   - `scripts/session-start.py` provides Windows alternative entry point (configure in `install.py`)
    - Timeout setting: 30 seconds
 
 2. **Management Layer** (`scripts/auto-manager.py`)

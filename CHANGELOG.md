@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Global rules sync: automatically sync `global-rules/CLAUDE.md` to `~/.claude/CLAUDE.md` across machines
 - New `global_sync` configuration section in `config.json`
 - `global-rules/CLAUDE.md` added to git-sync whitelist
-- Cross-platform Hook entry point: `scripts/session-start.py` replaces `session-start.sh` as Hook entry (shell script retained for backward compatibility)
+- Windows Hook entry point: `scripts/session-start.py` as alternative for Windows (macOS/Linux continues using `session-start.sh`)
 - Per-marketplace updates: read `known_marketplaces.json` and update each marketplace individually with name validation (`_is_valid_marketplace_name()`)
 - Self-sync: `git pull --ff-only` on startup to fetch latest snapshot and config before any operations
 - Self-registration: auto-register in `installed_plugins.json` on startup to prevent Hook loss from plugin operations rebuilding the file

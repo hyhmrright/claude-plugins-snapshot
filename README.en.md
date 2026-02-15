@@ -15,7 +15,7 @@ Automatically manage Claude Code plugin installation and updates, with cross-mac
 - ✅ **Self-registration**: Prevents Hook loss when plugin operations overwrite `installed_plugins.json`
 - ✅ **Global Rules Sync**: Auto-sync `global-rules/CLAUDE.md` to `~/.claude/CLAUDE.md`
 - ✅ **Cross-platform Notifications**: System notifications after updates (macOS/Linux/Windows)
-- ✅ **Background Execution**: Does not block Claude startup (cross-platform Python entry point)
+- ✅ **Background Execution**: Does not block Claude startup
 - ✅ **Log Management**: Auto-rotation, max 10MB retention
 - ✅ **One-click Install**: Single script setup on new machines
 - ✅ **Cross-platform Support**: macOS, Linux, Windows, DevContainer
@@ -133,8 +133,8 @@ auto-manager/
 ├── hooks/
 │   └── hooks.json           # SessionStart Hook configuration
 ├── scripts/
-│   ├── session-start.py     # Hook entry point (cross-platform, background execution)
-│   ├── session-start.sh     # Hook entry point fallback (Unix only, backward compat)
+│   ├── session-start.sh     # Hook entry point (background execution)
+│   ├── session-start.py     # Hook entry point fallback (Windows)
 │   ├── auto-manager.py      # Main logic (install + update)
 │   ├── create-snapshot.py   # Generate plugin snapshot
 │   ├── git-sync.py          # Git sync script

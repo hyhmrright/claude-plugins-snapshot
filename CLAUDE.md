@@ -16,8 +16,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 1. **Hook 层** (`hooks/hooks.json`)
    - SessionStart Hook 在每次 Claude Code 启动时触发
-   - 调用 `scripts/session-start.py`（跨平台 Python 入口）在后台执行（避免阻塞启动）
-   - 保留 `scripts/session-start.sh` 向后兼容（不再是 Hook 入口）
+   - 调用 `scripts/session-start.sh` 在后台执行（避免阻塞启动）
+   - `scripts/session-start.py` 提供 Windows 备选入口（需在 `install.py` 中配置）
    - 超时设置：30秒
 
 2. **管理层** (`scripts/auto-manager.py`)

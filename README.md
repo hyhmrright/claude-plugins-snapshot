@@ -15,7 +15,7 @@
 - ✅ **自注册机制**：防止插件操作覆盖 `installed_plugins.json` 导致 Hook 丢失
 - ✅ **全局规则同步**：自动同步 `global-rules/CLAUDE.md` 到 `~/.claude/CLAUDE.md`
 - ✅ **跨平台通知**：更新完成后发送系统通知（macOS/Linux/Windows）
-- ✅ **后台执行**：不阻塞 Claude 启动（跨平台 Python 入口）
+- ✅ **后台执行**：不阻塞 Claude 启动
 - ✅ **日志管理**：自动轮转，最多保留 10MB
 - ✅ **一键安装**：新机器上运行一个脚本即可完成配置
 - ✅ **跨平台支持**：macOS、Linux、Windows、DevContainer
@@ -133,8 +133,8 @@ auto-manager/
 ├── hooks/
 │   └── hooks.json           # SessionStart Hook 配置
 ├── scripts/
-│   ├── session-start.py     # Hook 入口（跨平台，后台执行）
-│   ├── session-start.sh     # Hook 入口备选（仅 Unix，向后兼容）
+│   ├── session-start.sh     # Hook 入口（后台执行）
+│   ├── session-start.py     # Hook 入口备选（Windows）
 │   ├── auto-manager.py      # 主逻辑（安装 + 更新）
 │   ├── create-snapshot.py   # 生成插件快照
 │   ├── git-sync.py          # Git 同步脚本
