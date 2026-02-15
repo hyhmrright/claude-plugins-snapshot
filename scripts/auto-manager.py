@@ -521,11 +521,47 @@ def create_new_snapshot() -> bool:
         if result.returncode == 0:
             log("✓ Snapshot created")
             return True
-        else:
-            log(f"✗ Failed to create snapshot: {result.stderr}")
-            return False
+
+        log(f"✗ Failed to create snapshot: {result.stderr}")
+        return False
     except Exception as e:
         log(f"✗ Error creating snapshot: {e}")
+        return False
+
+
+def sync_self_repo() -> bool:
+    """同步 auto-manager 仓库自身（git pull），获取最新快照和配置
+
+    在所有操作之前执行，确保使用最新的快照和配置文件。
+    失败不影响后续流程。
+    """
+    try:
+        log("Syncing auto-manager repo (git pull)...")
+        result = subprocess.run(
+            ["git", "pull", "--ff-only"],
+            capture_output=True,
+            text=True,
+            timeout=COMMAND_TIMEOUT_SHORT,
+            cwd=str(AUTO_MANAGER_DIR),
+            check=False,
+        )
+
+        if result.returncode == 0:
+            output = result.stdout.strip()
+            if "Already up to date" in output:
+                log("✓ Auto-manager repo already up to date")
+            else:
+                first_line = output.split("\n")[0]
+                log(f"✓ Auto-manager repo updated: {first_line}")
+            return True
+
+        log(f"✗ Failed to sync auto-manager repo: {result.stderr}")
+        return False
+    except subprocess.TimeoutExpired:
+        log("✗ Timeout syncing auto-manager repo")
+        return False
+    except Exception as e:
+        log(f"✗ Error syncing auto-manager repo: {e}")
         return False
 
 
@@ -548,9 +584,9 @@ def sync_to_git(config: Dict[str, Any]) -> bool:
         if result.returncode == 0:
             log("✓ Git sync completed")
             return True
-        else:
-            log(f"✗ Failed to sync to Git: {result.stderr}")
-            return False
+
+        log(f"✗ Failed to sync to Git: {result.stderr}")
+        return False
     except Exception as e:
         log(f"✗ Error syncing to Git: {e}")
         return False
@@ -709,7 +745,12 @@ def main() -> None:
     # 清理 Claude Code 自动生成的备份文件
     cleanup_claude_backups()
 
-    # 加载配置
+    # 0. 同步 auto-manager 仓库自身（拉取最新快照和配置）
+    # 在 load_config() 之前执行，确保使用远程最新的配置和快照。
+    # 不受 git_sync.enabled 控制，因为 git pull 是只读操作且配置尚未加载。
+    sync_self_repo()
+
+    # 加载配置（在 git pull 之后，确保使用最新配置）
     config = load_config()
 
     # 检查安装前的插件列表变化

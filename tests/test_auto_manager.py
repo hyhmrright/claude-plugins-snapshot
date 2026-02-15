@@ -18,6 +18,7 @@ _spec.loader.exec_module(_auto_manager)
 
 # Import constants and functions from the module under test
 get_all_marketplaces = _auto_manager.get_all_marketplaces
+sync_self_repo = _auto_manager.sync_self_repo
 update_all_marketplaces = _auto_manager.update_all_marketplaces
 MAX_RETRY_COUNT = _auto_manager.MAX_RETRY_COUNT
 MAX_LOG_SIZE_MB = _auto_manager.MAX_LOG_SIZE_MB
@@ -135,6 +136,54 @@ class TestNotificationEscaping:
         plain = "Hello World 123"
         assert escape_for_applescript(plain) == plain
         assert escape_for_powershell(plain) == plain
+
+
+class TestSyncSelfRepo:
+    """测试 auto-manager 仓库自身同步"""
+
+    @staticmethod
+    def _make_mock_run(monkeypatch, returncode=0, stdout="", stderr=""):
+        """创建模拟 subprocess.run 并返回捕获的调用参数"""
+        captured = {}
+
+        def mock_run(cmd, **kwargs):
+            captured["cmd"] = cmd
+            captured["kwargs"] = kwargs
+
+            class Result:
+                pass
+
+            result = Result()
+            result.returncode = returncode
+            result.stdout = stdout
+            result.stderr = stderr
+            return result
+
+        monkeypatch.setattr(_auto_manager.subprocess, "run", mock_run)
+        return captured
+
+    def test_sync_success_already_up_to_date(self, monkeypatch):
+        """测试仓库已是最新时返回 True"""
+        self._make_mock_run(monkeypatch, stdout="Already up to date.\n")
+        assert sync_self_repo() is True
+
+    def test_sync_success_with_updates(self, monkeypatch):
+        """测试有更新时返回 True"""
+        self._make_mock_run(monkeypatch, stdout="Updating abc123..def456\nFast-forward\n")
+        assert sync_self_repo() is True
+
+    def test_sync_failure(self, monkeypatch):
+        """测试 git pull 失败时返回 False"""
+        self._make_mock_run(monkeypatch, returncode=1, stderr="fatal: not a git repository")
+        assert sync_self_repo() is False
+
+    def test_sync_uses_ff_only_and_correct_cwd(self, monkeypatch):
+        """测试使用 --ff-only 且 cwd 指向 AUTO_MANAGER_DIR"""
+        captured = self._make_mock_run(monkeypatch, stdout="Already up to date.\n")
+        sync_self_repo()
+
+        assert captured["cmd"] == ["git", "pull", "--ff-only"]
+        assert captured["kwargs"]["cwd"] == str(_auto_manager.AUTO_MANAGER_DIR)
 
 
 class TestGitSync:
