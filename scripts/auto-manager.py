@@ -27,6 +27,8 @@ LAST_UPDATE_FILE = SNAPSHOT_DIR / ".last-update"
 LAST_INSTALL_STATE = SNAPSHOT_DIR / ".last-install-state.json"
 GLOBAL_RULES_SOURCE = AUTO_MANAGER_DIR / "global-rules" / "CLAUDE.md"
 GLOBAL_RULES_TARGET = CLAUDE_DIR / "CLAUDE.md"
+GLOBAL_SKILLS_SOURCE_DIR = AUTO_MANAGER_DIR / "global-skills"
+GLOBAL_SKILLS_TARGET_DIR = CLAUDE_DIR / "skills"
 KNOWN_MARKETPLACES_FILE = CLAUDE_DIR / "plugins" / "known_marketplaces.json"
 
 # 常量配置
@@ -87,6 +89,7 @@ def load_config() -> Dict[str, Any]:
             "auto_update": {"enabled": True, "interval_hours": 24, "notify": True},
             "git_sync": {"enabled": True, "auto_push": True},
             "global_sync": {"enabled": True},
+            "global_skills_sync": {"enabled": True},
             "snapshot": {"keep_versions": 10},
         }
 
@@ -672,6 +675,61 @@ def sync_global_rules(config: Dict[str, Any]) -> None:
         log(f"Error syncing global rules: {e}")
 
 
+def sync_global_skills(config: Dict[str, Any]) -> None:
+    """将仓库中的 global-skills/ 同步到 ~/.claude/skills/
+
+    遍历 global-skills/ 下的每个子目录，将 SKILL.md 同步到对应的目标目录。
+    只在源文件存在且内容有变化时更新。
+    """
+    global_skills_sync = config.get("global_skills_sync", {})
+    if not global_skills_sync.get("enabled", False):
+        log("Global skills sync is disabled in config")
+        return
+
+    if not GLOBAL_SKILLS_SOURCE_DIR.exists():
+        log("Global skills source directory not found, skipping sync")
+        return
+
+    try:
+        synced = 0
+        for skill_dir in GLOBAL_SKILLS_SOURCE_DIR.iterdir():
+            if not skill_dir.is_dir():
+                continue
+
+            source_file = skill_dir / "SKILL.md"
+            if not source_file.exists():
+                continue
+
+            target_dir = GLOBAL_SKILLS_TARGET_DIR / skill_dir.name
+            target_file = target_dir / "SKILL.md"
+
+            try:
+                source_content = source_file.read_text(encoding="utf-8")
+
+                # 只在内容变化时更新
+                if target_file.exists():
+                    target_content = target_file.read_text(encoding="utf-8")
+                    if source_content == target_content:
+                        continue
+
+                target_dir.mkdir(parents=True, exist_ok=True)
+
+                temp_file = target_file.with_suffix(".md.tmp")
+                temp_file.write_text(source_content, encoding="utf-8")
+                temp_file.rename(target_file)
+                log(f"✓ Synced skill: {skill_dir.name}")
+                synced += 1
+            except Exception as e:
+                log(f"Error syncing skill {skill_dir.name}: {e}")
+
+        if synced > 0:
+            log(f"Synced {synced} skill(s) to {GLOBAL_SKILLS_TARGET_DIR}")
+        else:
+            log("All skills unchanged, skipping sync")
+    except Exception as e:
+        log(f"Error syncing global skills: {e}")
+
+
 def cleanup_claude_backups() -> None:
     """清理 Claude Code 自动生成的带时间戳的备份文件
 
@@ -820,7 +878,10 @@ def main() -> None:
     # 2. 同步全局规则到 ~/.claude/CLAUDE.md
     sync_global_rules(config)
 
-    # 3. 检查是否需要更新
+    # 3. 同步全局 skills 到 ~/.claude/skills/
+    sync_global_skills(config)
+
+    # 4. 检查是否需要更新
     if args.force_update or should_update(config):
         # 先更新 marketplaces
         marketplace_updated = update_all_marketplaces()
@@ -841,7 +902,7 @@ def main() -> None:
         # 更新时间戳
         update_timestamp()
 
-    # 4. 只在插件列表变化时才创建快照并同步到 Git
+    # 5. 只在插件列表变化时才创建快照并同步到 Git
     if plugins_changed or snapshot_has_changes():
         log("Plugin list changed, creating snapshot and syncing to Git...")
 

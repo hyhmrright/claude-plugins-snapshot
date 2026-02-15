@@ -14,6 +14,7 @@
 - ✅ **仓库自同步**：启动时自动 `git pull` 拉取最新快照和配置
 - ✅ **自注册机制**：启动时及插件操作后自动注册，防止 `installed_plugins.json` 被重建导致 Hook 丢失
 - ✅ **全局规则同步**：自动同步 `global-rules/CLAUDE.md` 到 `~/.claude/CLAUDE.md`
+- ✅ **全局 Skills 同步**：自动同步 `global-skills/` 目录到 `~/.claude/skills/`
 - ✅ **跨平台通知**：更新完成后发送系统通知（macOS/Linux/Windows）
 - ✅ **后台执行**：不阻塞 Claude 启动
 - ✅ **日志管理**：自动轮转，最多保留 10MB
@@ -93,15 +94,16 @@ python install.py
    - **智能重试**：安装失败后 10 分钟自动重试，最多 5 次
    - **状态记录**：跟踪每个插件的安装状态和重试次数
 4. **全局规则同步**：自动同步 `global-rules/CLAUDE.md` 到 `~/.claude/CLAUDE.md`
-5. **自动更新**（可配置）：
+5. **全局 Skills 同步**：自动同步 `global-skills/` 目录到 `~/.claude/skills/`
+6. **自动更新**（可配置）：
    - **默认行为**（`interval_hours: 0`）：每次启动都更新 Marketplaces 和所有插件，确保始终最新
    - **定时更新**（`interval_hours: 24`）：每 24 小时更新一次 Marketplaces 和插件
    - **更新顺序**：先逐个更新 Marketplaces（从 `known_marketplaces.json` 读取），再逐个更新插件
    - **会话检测**：在 Claude Code 会话中自动跳过更新（避免嵌套会话错误）
-6. **智能同步**：
+7. **智能同步**：
    - ✅ **插件列表变化**（安装/卸载）→ 生成快照并推送到 Git
    - ❌ **只是版本更新**（自动更新）→ 不推送，避免无意义的 commit
-7. **日志管理**：
+8. **日志管理**：
    - 自动轮转，最多保留 10MB
    - 超出时保留最近 8MB 内容
 
@@ -140,6 +142,7 @@ auto-manager/
 │   ├── git-sync.py          # Git 同步脚本
 │   ├── sync-snapshot.sh     # 手动同步快照到 Git
 │   └── sync-snapshot.py     # 手动同步快照（跨平台）
+├── global-skills/           # 全局 Skills（Git 追踪，同步到 ~/.claude/skills/）
 ├── snapshots/
 │   ├── current.json         # 当前快照（唯一快照文件）
 │   ├── .last-update         # 上次更新时间戳（本地）
@@ -237,6 +240,9 @@ cat ~/.claude/plugins/auto-manager/snapshots/current.json
   },
   "global_sync": {
     "enabled": true              // 是否同步 global-rules/CLAUDE.md 到 ~/.claude/CLAUDE.md
+  },
+  "global_skills_sync": {
+    "enabled": true              // 是否同步 global-skills/ 到 ~/.claude/skills/
   },
   "git_sync": {
     "enabled": true,             // 是否同步到 Git

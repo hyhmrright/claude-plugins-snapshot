@@ -302,6 +302,102 @@ class TestGlobalRulesSync:
         assert target.read_text(encoding="utf-8") == "# Rules\n"
 
 
+class TestGlobalSkillsSync:
+    """测试全局 Skills 同步"""
+
+    ENABLED_CONFIG = {"global_skills_sync": {"enabled": True}}
+
+    def test_disabled_in_config(self, capsys):
+        """测试配置禁用时跳过同步"""
+        _auto_manager.sync_global_skills({"global_skills_sync": {"enabled": False}})
+        assert "disabled" in capsys.readouterr().out
+
+    def test_missing_config_defaults_to_disabled(self, capsys):
+        """测试缺少配置时默认禁用"""
+        _auto_manager.sync_global_skills({})
+        assert "disabled" in capsys.readouterr().out
+
+    def test_source_directory_not_found(self, tmp_path, monkeypatch, capsys):
+        """测试源目录不存在时跳过"""
+        monkeypatch.setattr(_auto_manager, "GLOBAL_SKILLS_SOURCE_DIR", tmp_path / "nonexistent")
+        _auto_manager.sync_global_skills(self.ENABLED_CONFIG)
+        assert "not found" in capsys.readouterr().out
+
+    def test_sync_creates_skill(self, tmp_path, monkeypatch):
+        """测试同步创建 skill 目录和文件"""
+        source_dir = tmp_path / "source"
+        target_dir = tmp_path / "target"
+        (source_dir / "my-skill").mkdir(parents=True)
+        (source_dir / "my-skill" / "SKILL.md").write_text("# My Skill\n", encoding="utf-8")
+
+        monkeypatch.setattr(_auto_manager, "GLOBAL_SKILLS_SOURCE_DIR", source_dir)
+        monkeypatch.setattr(_auto_manager, "GLOBAL_SKILLS_TARGET_DIR", target_dir)
+
+        _auto_manager.sync_global_skills(self.ENABLED_CONFIG)
+
+        assert (target_dir / "my-skill" / "SKILL.md").read_text(encoding="utf-8") == "# My Skill\n"
+
+    def test_unchanged_content_skipped(self, tmp_path, monkeypatch, capsys):
+        """测试内容未变化时跳过"""
+        source_dir = tmp_path / "source"
+        target_dir = tmp_path / "target"
+        (source_dir / "skill1").mkdir(parents=True)
+        (source_dir / "skill1" / "SKILL.md").write_text("# Skill\n", encoding="utf-8")
+        (target_dir / "skill1").mkdir(parents=True)
+        (target_dir / "skill1" / "SKILL.md").write_text("# Skill\n", encoding="utf-8")
+
+        monkeypatch.setattr(_auto_manager, "GLOBAL_SKILLS_SOURCE_DIR", source_dir)
+        monkeypatch.setattr(_auto_manager, "GLOBAL_SKILLS_TARGET_DIR", target_dir)
+
+        _auto_manager.sync_global_skills(self.ENABLED_CONFIG)
+        assert "unchanged" in capsys.readouterr().out
+
+    def test_changed_content_synced(self, tmp_path, monkeypatch):
+        """测试内容变化时同步"""
+        source_dir = tmp_path / "source"
+        target_dir = tmp_path / "target"
+        (source_dir / "skill1").mkdir(parents=True)
+        (source_dir / "skill1" / "SKILL.md").write_text("# New\n", encoding="utf-8")
+        (target_dir / "skill1").mkdir(parents=True)
+        (target_dir / "skill1" / "SKILL.md").write_text("# Old\n", encoding="utf-8")
+
+        monkeypatch.setattr(_auto_manager, "GLOBAL_SKILLS_SOURCE_DIR", source_dir)
+        monkeypatch.setattr(_auto_manager, "GLOBAL_SKILLS_TARGET_DIR", target_dir)
+
+        _auto_manager.sync_global_skills(self.ENABLED_CONFIG)
+        assert (target_dir / "skill1" / "SKILL.md").read_text(encoding="utf-8") == "# New\n"
+
+    def test_multiple_skills_synced(self, tmp_path, monkeypatch, capsys):
+        """测试同步多个 skills"""
+        source_dir = tmp_path / "source"
+        target_dir = tmp_path / "target"
+        for name in ["skill-a", "skill-b"]:
+            (source_dir / name).mkdir(parents=True)
+            (source_dir / name / "SKILL.md").write_text(f"# {name}\n", encoding="utf-8")
+
+        monkeypatch.setattr(_auto_manager, "GLOBAL_SKILLS_SOURCE_DIR", source_dir)
+        monkeypatch.setattr(_auto_manager, "GLOBAL_SKILLS_TARGET_DIR", target_dir)
+
+        _auto_manager.sync_global_skills(self.ENABLED_CONFIG)
+
+        assert (target_dir / "skill-a" / "SKILL.md").exists()
+        assert (target_dir / "skill-b" / "SKILL.md").exists()
+        assert "Synced 2 skill(s)" in capsys.readouterr().out
+
+    def test_skips_non_directory_entries(self, tmp_path, monkeypatch, capsys):
+        """测试跳过非目录条目"""
+        source_dir = tmp_path / "source"
+        source_dir.mkdir()
+        (source_dir / "README.md").write_text("not a skill")
+        target_dir = tmp_path / "target"
+
+        monkeypatch.setattr(_auto_manager, "GLOBAL_SKILLS_SOURCE_DIR", source_dir)
+        monkeypatch.setattr(_auto_manager, "GLOBAL_SKILLS_TARGET_DIR", target_dir)
+
+        _auto_manager.sync_global_skills(self.ENABLED_CONFIG)
+        assert "unchanged" in capsys.readouterr().out
+
+
 class TestMarketplaceUpdate:
     """测试 Marketplace 更新逻辑"""
 

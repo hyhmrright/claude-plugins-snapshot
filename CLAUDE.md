@@ -72,6 +72,10 @@ snapshots/
 global-rules/
 └── CLAUDE.md                 # 全局规则文件（Git 追踪，同步到 ~/.claude/CLAUDE.md）
 
+global-skills/
+└── sync-snapshot/
+    └── SKILL.md              # Skill 文件（Git 追踪，同步到 ~/.claude/skills/sync-snapshot/）
+
 logs/
 └── auto-manager.log          # 运行日志（本地，Git 忽略）
 ```
@@ -189,6 +193,9 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
   "global_sync": {
     "enabled": true          // 是否将 global-rules/CLAUDE.md 同步到 ~/.claude/CLAUDE.md
   },
+  "global_skills_sync": {
+    "enabled": true          // 是否将 global-skills/ 同步到 ~/.claude/skills/
+  },
   "git_sync": {
     "enabled": true,         // 是否启用 Git 同步
     "auto_push": true        // 是否自动推送到远程
@@ -253,26 +260,31 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
    - 对比 `~/.claude/CLAUDE.md` 内容
    - 有变化 → 更新目标文件
    - 无变化 → 跳过
-8. **智能重试**：
+8. **全局 Skills 同步**：
+   - 遍历 `global-skills/` 下的每个子目录
+   - 读取 `SKILL.md` 并对比 `~/.claude/skills/<name>/SKILL.md` 内容
+   - 有变化 → 更新目标文件
+   - 无变化 → 跳过
+9. **智能重试**：
    - 读取 `.last-install-state.json` 中的失败记录
    - 检查是否超过 10 分钟重试间隔
    - 重试次数未超过 5 次 → 重试安装
    - 超过 5 次 → 暂时放弃，等待手动干预
-9. **定时更新**（可配置）：
-   - 检查 `.last-update` 时间戳
-   - 如果距离上次更新超过 `interval_hours` → 执行更新
-   - `interval_hours: 0` → 每次启动都更新
-10. **更新流程**：
+10. **定时更新**（可配置）：
+    - 检查 `.last-update` 时间戳
+    - 如果距离上次更新超过 `interval_hours` → 执行更新
+    - `interval_hours: 0` → 每次启动都更新
+11. **更新流程**：
     - 先逐个更新 Marketplaces（`claude plugin marketplace update <name>`）
     - 从 `~/.claude/plugins/known_marketplaces.json` 读取所有 marketplace
     - 再逐个更新所有已安装插件（`claude plugin update <name>`）
     - **更新后重新注册自身**（`claude plugin update` 会重建 `installed_plugins.json`）
-11. **Git 同步**：
+12. **Git 同步**：
     - 生成新快照
     - 对比插件列表是否变化
     - 有变化 → commit 并 push
     - 无变化 → 跳过（只是版本号更新）
-12. **系统通知**（可配置）：
+13. **系统通知**（可配置）：
     - macOS：使用 `osascript`
     - Linux：使用 `notify-send`
     - Windows：使用 PowerShell Toast

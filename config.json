@@ -15,6 +15,9 @@
   "global_sync": {
     "enabled": true
   },
+  "global_skills_sync": {
+    "enabled": true
+  },
   "snapshot": {
     "keep_versions": 10
   }

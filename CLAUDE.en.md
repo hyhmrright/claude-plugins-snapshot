@@ -72,6 +72,10 @@ snapshots/
 global-rules/
 └── CLAUDE.md                 # Global rules file (Git-tracked, synced to ~/.claude/CLAUDE.md)
 
+global-skills/
+└── sync-snapshot/
+    └── SKILL.md              # Skill file (Git-tracked, synced to ~/.claude/skills/sync-snapshot/)
+
 logs/
 └── auto-manager.log          # Runtime log (local, Git-ignored)
 ```
@@ -189,6 +193,9 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
   "global_sync": {
     "enabled": true          // Sync global-rules/CLAUDE.md to ~/.claude/CLAUDE.md
   },
+  "global_skills_sync": {
+    "enabled": true          // Sync global-skills/ to ~/.claude/skills/
+  },
   "git_sync": {
     "enabled": true,         // Enable Git sync
     "auto_push": true        // Auto-push to remote
@@ -253,26 +260,31 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
    - Compare with `~/.claude/CLAUDE.md` contents
    - Changed → Update target file
    - Unchanged → Skip
-8. **Smart retry**:
+8. **Global skills sync**:
+   - Iterate each subdirectory under `global-skills/`
+   - Read `SKILL.md` and compare with `~/.claude/skills/<name>/SKILL.md`
+   - Changed → Update target file
+   - Unchanged → Skip
+9. **Smart retry**:
    - Read failure records from `.last-install-state.json`
    - Check if 10-minute retry interval has elapsed
    - Retry count under 5 → Retry installation
    - Over 5 → Temporarily give up, wait for manual intervention
-9. **Scheduled update** (configurable):
-   - Check `.last-update` timestamp
-   - If time since last update exceeds `interval_hours` → Execute update
-   - `interval_hours: 0` → Update on every startup
-10. **Update flow**:
+10. **Scheduled update** (configurable):
+    - Check `.last-update` timestamp
+    - If time since last update exceeds `interval_hours` → Execute update
+    - `interval_hours: 0` → Update on every startup
+11. **Update flow**:
     - First update each Marketplace individually (`claude plugin marketplace update <name>`)
     - Reads all marketplaces from `~/.claude/plugins/known_marketplaces.json`
     - Then update each installed plugin individually (`claude plugin update <name>`)
     - **Re-register self after update** (`claude plugin update` rebuilds `installed_plugins.json`)
-11. **Git sync**:
+12. **Git sync**:
     - Generate new snapshot
     - Compare if plugin list has changed
     - Changed → Commit and push
     - Unchanged → Skip (only version numbers updated)
-12. **System notifications** (configurable):
+13. **System notifications** (configurable):
     - macOS: Uses `osascript`
     - Linux: Uses `notify-send`
     - Windows: Uses PowerShell Toast

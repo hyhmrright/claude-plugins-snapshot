@@ -14,6 +14,7 @@ Automatically manage Claude Code plugin installation and updates, with cross-mac
 - ✅ **Self-sync**: Auto `git pull` on startup to fetch latest snapshot and config
 - ✅ **Self-registration**: Auto-registers on startup and after plugin operations, preventing Hook loss when `installed_plugins.json` is rebuilt
 - ✅ **Global Rules Sync**: Auto-sync `global-rules/CLAUDE.md` to `~/.claude/CLAUDE.md`
+- ✅ **Global Skills Sync**: Auto-sync `global-skills/` directory to `~/.claude/skills/`
 - ✅ **Cross-platform Notifications**: System notifications after updates (macOS/Linux/Windows)
 - ✅ **Background Execution**: Does not block Claude startup
 - ✅ **Log Management**: Auto-rotation, max 10MB retention
@@ -93,15 +94,16 @@ The current machine is already set up, and snapshots are synced to GitHub.
    - **Smart Retry**: Auto-retry after 10 minutes on failure, up to 5 attempts
    - **State Tracking**: Track installation status and retry count for each plugin
 4. **Global Rules Sync**: Auto-sync `global-rules/CLAUDE.md` to `~/.claude/CLAUDE.md`
-5. **Auto Update** (configurable):
+5. **Global Skills Sync**: Auto-sync `global-skills/` directory to `~/.claude/skills/`
+6. **Auto Update** (configurable):
    - **Default behavior** (`interval_hours: 0`): Update Marketplaces and all plugins on every startup, ensuring everything is always up-to-date
    - **Scheduled update** (`interval_hours: 24`): Update Marketplaces and plugins every 24 hours
    - **Update order**: Update each Marketplace individually (from `known_marketplaces.json`), then update each plugin
    - **Session detection**: Automatically skip updates when running inside a Claude Code session (avoid nested session errors)
-6. **Smart Sync**:
+7. **Smart Sync**:
    - ✅ **Plugin list changes** (install/uninstall) → Generate snapshot and push to Git
    - ❌ **Version-only updates** (auto-update) → Don't push, avoid meaningless commits
-7. **Log Management**:
+8. **Log Management**:
    - Auto-rotation, max 10MB retention
    - Keep the most recent 8MB when size is exceeded
 
@@ -140,6 +142,7 @@ auto-manager/
 │   ├── git-sync.py          # Git sync script
 │   ├── sync-snapshot.sh     # Manual snapshot sync to Git
 │   └── sync-snapshot.py     # Manual snapshot sync (cross-platform)
+├── global-skills/           # Global Skills (Git-tracked, synced to ~/.claude/skills/)
 ├── snapshots/
 │   ├── current.json         # Current snapshot (single snapshot file)
 │   ├── .last-update         # Last update timestamp (local)
@@ -237,6 +240,9 @@ Edit `config.json` to customize behavior:
   },
   "global_sync": {
     "enabled": true              // Sync global-rules/CLAUDE.md to ~/.claude/CLAUDE.md
+  },
+  "global_skills_sync": {
+    "enabled": true              // Sync global-skills/ to ~/.claude/skills/
   },
   "git_sync": {
     "enabled": true,             // Enable Git sync
