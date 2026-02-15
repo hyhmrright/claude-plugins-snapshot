@@ -366,10 +366,13 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 
 ### Hook Not Triggering
 
-1. Check plugin enabled state: `cat ~/.claude/settings.json | grep enabledPlugins`
-2. Check Hook configuration: `cat hooks/hooks.json`
-3. Restart Claude Code
-4. View startup logs: `tail -f logs/auto-manager.log`
+1. **Most common cause**: `auto-manager` not registered in `installed_plugins.json` (overwritten when `claude plugin install/update` rebuilds the file)
+   - Check: `python3 -c "import json; d=json.load(open('$HOME/.claude/plugins/installed_plugins.json')); print('auto-manager' in d.get('plugins', {}))"`
+   - Fix: Run `python3 scripts/auto-manager.py` (will auto-re-register), or run `python3 install.py`
+2. Check plugin enabled state: `cat ~/.claude/settings.json | grep enabledPlugins`
+3. Check Hook configuration: `cat hooks/hooks.json`
+4. Restart Claude Code
+5. View startup logs: `tail -f logs/auto-manager.log`
 
 ## Code Modification Guidelines
 
@@ -393,6 +396,7 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 1. **Avoid blocking**: SessionStart Hook must execute in background (`&`)
 2. **Timeout settings**: Hook timeout should be long enough (currently 30 seconds) but not too long
 3. **Log redirection**: All output redirected to `logs/auto-manager.log`
+4. **Do NOT change Hook entry to `python3`**: Claude Code Hook execution environment's `PATH` may not include `python3`. Must use `.sh` script with direct path execution (via shebang to call bash)
 
 ### When Modifying Snapshot Format
 
@@ -403,9 +407,10 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 ### When Adding New Features
 
 1. **Write tests**: Add corresponding test cases in the `tests/` directory (v1.1.0)
-2. **Update documentation**: Update both CLAUDE.md and README.md
+2. **Update documentation**: Update CLAUDE.md, CLAUDE.en.md, README.md, README.en.md (four files total, Chinese and English)
 3. **Update CHANGELOG**: Record in the Unreleased section of CHANGELOG.md
 4. **Code review**: Run `pytest tests/ -v` to ensure all tests pass
+5. **Deployment verification**: When modifying critical paths (Hook entry, registration mechanism), must verify by actually starting Claude Code in the deployment environment (`~/.claude/plugins/auto-manager/`). Unit tests are insufficient
 
 ### Important Security Fixes (v1.1.0)
 

@@ -366,10 +366,13 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 
 ### Hook 未触发
 
-1. 检查插件启用状态：`cat ~/.claude/settings.json | grep enabledPlugins`
-2. 检查 Hook 配置：`cat hooks/hooks.json`
-3. 重启 Claude Code
-4. 查看启动日志：`tail -f logs/auto-manager.log`
+1. **最常见原因**：`auto-manager` 未在 `installed_plugins.json` 中注册（被 `claude plugin install/update` 重建文件时覆盖）
+   - 检查：`python3 -c "import json; d=json.load(open('$HOME/.claude/plugins/installed_plugins.json')); print('auto-manager' in d.get('plugins', {}))"`
+   - 修复：运行 `python3 scripts/auto-manager.py`（会自动重新注册），或运行 `python3 install.py`
+2. 检查插件启用状态：`cat ~/.claude/settings.json | grep enabledPlugins`
+3. 检查 Hook 配置：`cat hooks/hooks.json`
+4. 重启 Claude Code
+5. 查看启动日志：`tail -f logs/auto-manager.log`
 
 ## 代码修改注意事项
 
@@ -393,6 +396,7 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 1. **避免阻塞**：SessionStart Hook 必须在后台执行（`&`）
 2. **超时设置**：Hook 超时应足够长（当前 30 秒），但不宜过长
 3. **日志重定向**：所有输出重定向到 `logs/auto-manager.log`
+4. **不要改 Hook 入口为 `python3`**：Claude Code Hook 执行环境的 `PATH` 可能不包含 `python3`，必须使用 `.sh` 脚本直接执行（通过 shebang 调用 bash）
 
 ### 修改快照格式时
 
@@ -403,9 +407,10 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 ### 添加新功能时
 
 1. **编写测试**：在 `tests/` 目录添加对应的测试用例（v1.1.0）
-2. **更新文档**：同时更新 CLAUDE.md 和 README.md
+2. **更新文档**：同时更新 CLAUDE.md、CLAUDE.en.md、README.md、README.en.md（中英文各两个文件，共四个）
 3. **更新 CHANGELOG**：记录到 CHANGELOG.md 的 Unreleased 部分
 4. **代码审查**：运行 `pytest tests/ -v` 确保所有测试通过
+5. **部署验证**：修改 Hook 入口或注册机制等关键路径时，必须在部署环境（`~/.claude/plugins/auto-manager/`）实际启动 Claude Code 验证，单元测试不够
 
 ### 重要安全修复（v1.1.0）
 
