@@ -806,6 +806,8 @@ def main() -> None:
     # 1. 安装缺失的插件
     if config["auto_install"]["enabled"]:
         installed_count = install_missing_plugins()
+        # claude plugin install 可能重建 installed_plugins.json，需要重新注册
+        ensure_self_registered()
         if installed_count > 0:
             plugins_changed = True  # 安装了新插件，需要同步
             if config["auto_update"]["notify"]:
@@ -825,6 +827,8 @@ def main() -> None:
 
         # 再更新插件
         update_count = update_all_plugins()
+        # claude plugin update 可能重建 installed_plugins.json，需要重新注册
+        ensure_self_registered()
 
         if marketplace_updated > 0 or update_count > 0:
             # 发送通知
