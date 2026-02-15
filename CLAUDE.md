@@ -16,13 +16,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 1. **Hook 层** (`hooks/hooks.json`)
    - SessionStart Hook 在每次 Claude Code 启动时触发
-   - 调用 `scripts/session-start.sh` 在后台执行（避免阻塞启动）
+   - 调用 `scripts/session-start.py`（跨平台 Python 入口）在后台执行（避免阻塞启动）
+   - 保留 `scripts/session-start.sh` 向后兼容（不再是 Hook 入口）
    - 超时设置：30秒
 
 2. **管理层** (`scripts/auto-manager.py`)
    - **主逻辑**：协调安装、更新、同步三大功能
    - **智能重试**：安装失败后 10 分钟自动重试，最多 5 次，状态记录在 `.last-install-state.json`
-   - **会话检测**：自动检测是否在 Claude Code 会话中运行（检查 `CLAUDE_CODE_SESSION_ID` 环境变量）避免嵌套会话错误
+   - **会话检测**：自动检测是否在 Claude Code 会话中运行（检查 `CLAUDECODE` 环境变量）避免嵌套会话错误
+   - **仓库自同步**：启动时自动 `git pull` 拉取最新快照和配置
+   - **自注册机制**：确保自身在 `installed_plugins.json` 中注册，防止被插件操作覆盖导致 Hook 丢失
+   - **Marketplace 逐个更新**：读取 `known_marketplaces.json` 逐个更新所有 marketplace（含名称验证）
    - **定时更新**：根据 `config.json` 中的 `interval_hours` 配置（0=每次启动，24=每日更新）
    - **日志管理**：自动轮转，超过 10MB 时截断到 8MB
    - **备份清理**：每次启动时自动删除 Claude Code 生成的 `~/.claude.json.backup.<timestamp>` 备份文件，只保留主备份文件
@@ -39,6 +43,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 所有配置常量在 `scripts/auto-manager.py` 顶部定义：
 
 ```python
+# 配置路径
+KNOWN_MARKETPLACES_FILE = CLAUDE_DIR / "plugins" / "known_marketplaces.json"
+
 # 日志管理
 MAX_LOG_SIZE_MB = 10           # 日志最大大小
 KEEP_LOG_SIZE_MB = 8           # 轮转后保留大小
@@ -225,40 +232,48 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
    - 删除 `~/.claude.json.backup.<timestamp>` 格式的文件
    - 保留 `~/.claude.json.backup`（主备份文件）
    - 目的：防止备份文件无限累积占用磁盘空间
-3. **会话检测**：检查 `CLAUDE_CODE_SESSION_ID` 环境变量
+3. **自注册检查**：确保 auto-manager 在 `installed_plugins.json` 中注册
+   - 防止被 Claude Code 插件操作重建文件时覆盖
+   - 丢失注册信息会导致 Hook 不再被触发
+4. **仓库自同步**：`git pull --ff-only` 拉取最新快照和配置
+   - 在 `load_config()` 之前执行，确保使用远程最新配置
+   - 不受 `git_sync.enabled` 控制（只读操作且配置尚未加载）
+5. **会话检测**：检查 `CLAUDECODE` 环境变量
    - 如果在 Claude Code 会话中 → 跳过更新（避免嵌套会话错误）
    - 如果不在会话中 → 正常执行
-4. **安装缺失插件**：
+   - `session-start.py` 在启动后台进程前会 unset 此变量
+6. **安装缺失插件**：
    - 读取 `snapshots/current.json` 中的插件列表
    - 对比 `~/.claude/plugins/installed_plugins.json` 中的已安装列表
    - 安装缺失的插件
    - 失败时记录到 `.last-install-state.json` 供后续重试
-5. **全局规则同步**：
+7. **全局规则同步**：
    - 读取 `global-rules/CLAUDE.md`
    - 对比 `~/.claude/CLAUDE.md` 内容
    - 有变化 → 更新目标文件
    - 无变化 → 跳过
-6. **智能重试**：
+8. **智能重试**：
    - 读取 `.last-install-state.json` 中的失败记录
    - 检查是否超过 10 分钟重试间隔
    - 重试次数未超过 5 次 → 重试安装
    - 超过 5 次 → 暂时放弃，等待手动干预
-7. **定时更新**（可配置）：
+9. **定时更新**（可配置）：
    - 检查 `.last-update` 时间戳
    - 如果距离上次更新超过 `interval_hours` → 执行更新
    - `interval_hours: 0` → 每次启动都更新
-8. **更新流程**：
-   - 先更新 Marketplaces（`claude plugin update-marketplaces`）
-   - 再更新所有插件（`claude plugin update`）
-9. **Git 同步**：
-   - 生成新快照
-   - 对比插件列表是否变化
-   - 有变化 → commit 并 push
-   - 无变化 → 跳过（只是版本号更新）
-10. **系统通知**（可配置）：
-   - macOS：使用 `osascript`
-   - Linux：使用 `notify-send`
-   - Windows：使用 PowerShell Toast
+10. **更新流程**：
+    - 先逐个更新 Marketplaces（`claude plugin marketplace update <name>`）
+    - 从 `~/.claude/plugins/known_marketplaces.json` 读取所有 marketplace
+    - 再逐个更新所有已安装插件（`claude plugin update <name>`）
+11. **Git 同步**：
+    - 生成新快照
+    - 对比插件列表是否变化
+    - 有变化 → commit 并 push
+    - 无变化 → 跳过（只是版本号更新）
+12. **系统通知**（可配置）：
+    - macOS：使用 `osascript`
+    - Linux：使用 `notify-send`
+    - Windows：使用 PowerShell Toast
 
 ### 重试机制详解
 
@@ -338,7 +353,7 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 1. 检查时间戳：`cat snapshots/.last-update`
 2. 检查配置：`cat config.json | grep interval_hours`
 3. 强制更新：`python3 scripts/auto-manager.py --force-update`
-4. 检查会话环境：`echo $CLAUDE_CODE_SESSION_ID`（应为空）
+4. 检查会话环境：`echo $CLAUDECODE`（应为空）
 
 ### Git 推送失败
 
@@ -392,7 +407,7 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 
 ### 重要安全修复（v1.1.0）
 
-1. **会话检测环境变量**：必须使用 `CLAUDE_CODE_SESSION_ID`（不是 `CLAUDECODE`）
+1. **会话检测环境变量**：必须使用 `CLAUDECODE`（已确认为 claude CLI 实际使用的变量；v1.1.0 曾错误地改为 `CLAUDE_CODE_SESSION_ID`，已在后续版本修正）
 2. **通知消息转义**：
    - macOS: `escape_for_applescript()` - 转义 `\` 和 `"`
    - Windows: `escape_for_powershell()` - 转义 `"` 和 `$`

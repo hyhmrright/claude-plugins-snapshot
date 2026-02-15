@@ -16,13 +16,17 @@ This is a Claude Code Plugin Auto-Manager that implements automatic plugin insta
 
 1. **Hook Layer** (`hooks/hooks.json`)
    - SessionStart Hook triggers on every Claude Code startup
-   - Calls `scripts/session-start.sh` for background execution (avoids blocking startup)
+   - Calls `scripts/session-start.py` (cross-platform Python entry point) for background execution (avoids blocking startup)
+   - `scripts/session-start.sh` retained for backward compatibility (no longer the Hook entry point)
    - Timeout setting: 30 seconds
 
 2. **Management Layer** (`scripts/auto-manager.py`)
    - **Main logic**: Coordinates install, update, and sync functionality
    - **Smart retry**: Auto-retry 10 minutes after installation failure, up to 5 attempts, state recorded in `.last-install-state.json`
-   - **Session detection**: Auto-detects if running inside a Claude Code session (checks `CLAUDE_CODE_SESSION_ID` environment variable) to avoid nested session errors
+   - **Session detection**: Auto-detects if running inside a Claude Code session (checks `CLAUDECODE` environment variable) to avoid nested session errors
+   - **Self-sync**: Auto `git pull` on startup to fetch latest snapshot and config
+   - **Self-registration**: Ensures itself is registered in `installed_plugins.json`, preventing Hook loss from plugin operations overwriting the file
+   - **Per-marketplace updates**: Reads `known_marketplaces.json` and updates each marketplace individually (with name validation)
    - **Scheduled updates**: Based on `interval_hours` configuration in `config.json` (0=every startup, 24=daily update)
    - **Log management**: Auto-rotation, truncates to 8MB when exceeding 10MB
    - **Backup cleanup**: Auto-deletes Claude Code generated `~/.claude.json.backup.<timestamp>` backup files on each startup, keeping only the main backup file
@@ -39,6 +43,9 @@ This is a Claude Code Plugin Auto-Manager that implements automatic plugin insta
 All configuration constants are defined at the top of `scripts/auto-manager.py`:
 
 ```python
+# Config paths
+KNOWN_MARKETPLACES_FILE = CLAUDE_DIR / "plugins" / "known_marketplaces.json"
+
 # Log management
 MAX_LOG_SIZE_MB = 10           # Maximum log size
 KEEP_LOG_SIZE_MB = 8           # Size to keep after rotation
@@ -225,37 +232,45 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
    - Deletes files matching `~/.claude.json.backup.<timestamp>` pattern
    - Preserves `~/.claude.json.backup` (main backup file)
    - Purpose: Prevent unlimited accumulation of backup files consuming disk space
-3. **Session detection**: Checks `CLAUDE_CODE_SESSION_ID` environment variable
+3. **Self-registration check**: Ensures auto-manager is registered in `installed_plugins.json`
+   - Prevents loss when Claude Code plugin operations rebuild the file
+   - Missing registration causes Hook to stop triggering
+4. **Self-sync**: `git pull --ff-only` to fetch latest snapshot and config
+   - Runs before `load_config()` to ensure latest remote config is used
+   - Not controlled by `git_sync.enabled` (read-only operation, config not yet loaded)
+5. **Session detection**: Checks `CLAUDECODE` environment variable
    - If inside a Claude Code session → Skip updates (avoid nested session errors)
    - If not in a session → Execute normally
-4. **Install missing plugins**:
+   - `session-start.py` unsets this variable before launching the background process
+6. **Install missing plugins**:
    - Read plugin list from `snapshots/current.json`
    - Compare with installed list in `~/.claude/plugins/installed_plugins.json`
    - Install missing plugins
    - Record failures to `.last-install-state.json` for later retry
-5. **Global rules sync**:
+7. **Global rules sync**:
    - Read `global-rules/CLAUDE.md`
    - Compare with `~/.claude/CLAUDE.md` contents
    - Changed → Update target file
    - Unchanged → Skip
-6. **Smart retry**:
+8. **Smart retry**:
    - Read failure records from `.last-install-state.json`
    - Check if 10-minute retry interval has elapsed
    - Retry count under 5 → Retry installation
    - Over 5 → Temporarily give up, wait for manual intervention
-7. **Scheduled update** (configurable):
+9. **Scheduled update** (configurable):
    - Check `.last-update` timestamp
    - If time since last update exceeds `interval_hours` → Execute update
    - `interval_hours: 0` → Update on every startup
-8. **Update flow**:
-   - First update Marketplaces (`claude plugin update-marketplaces`)
-   - Then update all plugins (`claude plugin update`)
-9. **Git sync**:
-   - Generate new snapshot
-   - Compare if plugin list has changed
-   - Changed → Commit and push
-   - Unchanged → Skip (only version numbers updated)
-10. **System notifications** (configurable):
+10. **Update flow**:
+    - First update each Marketplace individually (`claude plugin marketplace update <name>`)
+    - Reads all marketplaces from `~/.claude/plugins/known_marketplaces.json`
+    - Then update each installed plugin individually (`claude plugin update <name>`)
+11. **Git sync**:
+    - Generate new snapshot
+    - Compare if plugin list has changed
+    - Changed → Commit and push
+    - Unchanged → Skip (only version numbers updated)
+12. **System notifications** (configurable):
     - macOS: Uses `osascript`
     - Linux: Uses `notify-send`
     - Windows: Uses PowerShell Toast
@@ -338,7 +353,7 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 1. Check timestamp: `cat snapshots/.last-update`
 2. Check configuration: `cat config.json | grep interval_hours`
 3. Force update: `python3 scripts/auto-manager.py --force-update`
-4. Check session environment: `echo $CLAUDE_CODE_SESSION_ID` (should be empty)
+4. Check session environment: `echo $CLAUDECODE` (should be empty)
 
 ### Git Push Failure
 
@@ -392,7 +407,7 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 
 ### Important Security Fixes (v1.1.0)
 
-1. **Session detection environment variable**: Must use `CLAUDE_CODE_SESSION_ID` (not `CLAUDECODE`)
+1. **Session detection environment variable**: Must use `CLAUDECODE` (confirmed as the variable actually used by claude CLI; v1.1.0 incorrectly changed to `CLAUDE_CODE_SESSION_ID`, corrected in later version)
 2. **Notification message escaping**:
    - macOS: `escape_for_applescript()` - Escapes `\` and `"`
    - Windows: `escape_for_powershell()` - Escapes `"` and `$`

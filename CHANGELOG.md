@@ -11,11 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Global rules sync: automatically sync `global-rules/CLAUDE.md` to `~/.claude/CLAUDE.md` across machines
 - New `global_sync` configuration section in `config.json`
 - `global-rules/CLAUDE.md` added to git-sync whitelist
+- Cross-platform Hook entry point: `scripts/session-start.py` replaces `session-start.sh` as Hook entry (shell script retained for backward compatibility)
+- Per-marketplace updates: read `known_marketplaces.json` and update each marketplace individually with name validation (`_is_valid_marketplace_name()`)
+- Self-sync: `git pull --ff-only` on startup to fetch latest snapshot and config before any operations
+- Self-registration: auto-register in `installed_plugins.json` on startup to prevent Hook loss from plugin operations rebuilding the file
+
+### Fixed
+- Session detection environment variable: revert v1.1.0 change back to `CLAUDECODE` (confirmed this is the variable actually set by claude CLI; `CLAUDE_CODE_SESSION_ID` was incorrect)
 
 ## [1.1.0] - 2026-02-14
 
 ### Fixed
-- 🔴 **Critical**: Fixed session detection environment variable (CLAUDECODE → CLAUDE_CODE_SESSION_ID)
+- 🔴 **Critical**: Fixed session detection environment variable (CLAUDECODE → CLAUDE_CODE_SESSION_ID) *(reverted in later version: CLAUDECODE confirmed correct)*
 - 🔴 **Critical**: Fixed retry count logic inconsistency (first failure now sets retry_count=1)
 - 🟡 Fixed log rotation seek error when file is smaller than keep_size
 - 🟡 Fixed Git add command to only add specific files (prevents accidental commit of sensitive data)
