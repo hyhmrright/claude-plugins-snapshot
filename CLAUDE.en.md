@@ -423,6 +423,8 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 3. **Update CHANGELOG**: Record in the Unreleased section of CHANGELOG.md
 4. **Code review**: Run `pytest tests/ -v` to ensure all tests pass
 5. **Deployment verification**: When modifying critical paths (Hook entry, registration mechanism), must verify by actually starting Claude Code in the deployment environment (`~/.claude/plugins/auto-manager/`). Unit tests are insufficient
+6. **New sync features**: Reuse existing sync function patterns (e.g., `sync_global_skills()` follows `sync_global_rules()`), including: outer try-except, content change detection, atomic writes, log output
+7. **Cross-machine synced files**: Should be placed in repo directories (e.g., `global-skills/`) not `~/.claude/`, with auto-manager responsible for syncing to target locations
 
 ### Important Security Fixes (v1.1.0)
 
@@ -436,14 +438,16 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 ## Git Repository Information
 
 - **Repository URL**: `git@github.com:hyhmrright/claude-plugins-snapshot.git`
-- **Local path**: `~/.claude/plugins/auto-manager/`
+- **Deployed path**: `~/.claude/plugins/auto-manager/` (active deployment, executed by Claude Code)
+- **Development path**: `~/code/claude-plugins-snapshot/` (dev workspace, deployed dir auto-pulls on next startup after push)
 - **Tracked files**:
   - Config: `config.json`, `.gitignore`
   - Docs: `CLAUDE.md`, `README.md`, `CHANGELOG.md`, `LICENSE`
-  - Code: `scripts/`, `hooks/`, `install.py`, `install.sh`
+  - Code: `scripts/`, `hooks/`, `.claude/hooks/`, `install.py`, `install.sh`
   - Snapshot: `snapshots/current.json`
   - Tests: `tests/` (added in v1.1.0)
-- **Ignored files**: `logs/`, `snapshots/.last-update`, `snapshots/.last-install-state.json`
+  - Skills: `global-skills/`
+- **Ignored files**: `logs/`, `snapshots/.last-update`, `snapshots/.last-install-state.json`, `.claude/settings.local.json`
 - **Git sync strategy** (v1.1.0 security enhancement):
   - Whitelist mode: Only add specific files to Git
   - Prevent sensitive data leaks (.env, credentials, private keys, etc.)

@@ -423,6 +423,8 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 3. **更新 CHANGELOG**：记录到 CHANGELOG.md 的 Unreleased 部分
 4. **代码审查**：运行 `pytest tests/ -v` 确保所有测试通过
 5. **部署验证**：修改 Hook 入口或注册机制等关键路径时，必须在部署环境（`~/.claude/plugins/auto-manager/`）实际启动 Claude Code 验证，单元测试不够
+6. **新增同步功能**：复用已有同步函数模式（如 `sync_global_skills()` 参照 `sync_global_rules()`），包含：外层 try-except、内容变化检测、原子写入、日志输出
+7. **跨机器同步的文件**：应放在仓库目录（如 `global-skills/`）而非 `~/.claude/` 下，由 auto-manager 负责同步到目标位置
 
 ### 重要安全修复（v1.1.0）
 
@@ -436,14 +438,16 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 ## Git 仓库说明
 
 - **仓库位置**：`git@github.com:hyhmrright/claude-plugins-snapshot.git`
-- **本地路径**：`~/.claude/plugins/auto-manager/`
+- **部署路径**：`~/.claude/plugins/auto-manager/`（活跃部署，Claude Code 实际执行）
+- **开发路径**：`~/code/claude-plugins-snapshot/`（开发工作区，push 后部署目录下次启动自动 pull）
 - **追踪文件**：
   - 配置：`config.json`, `.gitignore`
   - 文档：`CLAUDE.md`, `README.md`, `CHANGELOG.md`, `LICENSE`
-  - 代码：`scripts/`, `hooks/`, `install.py`, `install.sh`
+  - 代码：`scripts/`, `hooks/`, `.claude/hooks/`, `install.py`, `install.sh`
   - 快照：`snapshots/current.json`
   - 测试：`tests/` （v1.1.0 新增）
-- **忽略文件**：`logs/`, `snapshots/.last-update`, `snapshots/.last-install-state.json`
+  - Skills：`global-skills/`
+- **忽略文件**：`logs/`, `snapshots/.last-update`, `snapshots/.last-install-state.json`, `.claude/settings.local.json`
 - **Git 同步策略**（v1.1.0 安全增强）：
   - 白名单模式：只添加特定文件到 Git
   - 防止敏感数据泄露（.env, credentials, 私钥等）
