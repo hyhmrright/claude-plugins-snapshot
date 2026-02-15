@@ -9,9 +9,13 @@ Automatically manage Claude Code plugin installation and updates, with cross-mac
 - ✅ **Auto Install**: Automatically install missing plugins from snapshot on startup
 - ✅ **Smart Retry**: Auto-retry failed installations, 10-minute interval, up to 5 attempts
 - ✅ **Auto Update**: Configurable update on every startup or on a schedule (default: every startup)
+- ✅ **Per-marketplace Updates**: Reads all known marketplaces and updates each individually
 - ✅ **Git Sync**: Snapshots automatically synced to GitHub for multi-machine sharing
+- ✅ **Self-sync**: Auto `git pull` on startup to fetch latest snapshot and config
+- ✅ **Self-registration**: Prevents Hook loss when plugin operations overwrite `installed_plugins.json`
+- ✅ **Global Rules Sync**: Auto-sync `global-rules/CLAUDE.md` to `~/.claude/CLAUDE.md`
 - ✅ **Cross-platform Notifications**: System notifications after updates (macOS/Linux/Windows)
-- ✅ **Background Execution**: Does not block Claude startup
+- ✅ **Background Execution**: Does not block Claude startup (cross-platform Python entry point)
 - ✅ **Log Management**: Auto-rotation, max 10MB retention
 - ✅ **One-click Install**: Single script setup on new machines
 - ✅ **Cross-platform Support**: macOS, Linux, Windows, DevContainer
@@ -83,18 +87,21 @@ The current machine is already set up, and snapshots are synced to GitHub.
 #### SessionStart Hook (On Session Start)
 
 **Every time Claude starts**:
-1. **Install Missing Plugins**: Compare snapshot with current installation, auto-install missing plugins
+1. **Self-registration Check**: Ensure auto-manager is registered in `installed_plugins.json` (prevents Hook loss)
+2. **Self-sync**: `git pull` to fetch latest snapshot and config
+3. **Install Missing Plugins**: Compare snapshot with current installation, auto-install missing plugins
    - **Smart Retry**: Auto-retry after 10 minutes on failure, up to 5 attempts
    - **State Tracking**: Track installation status and retry count for each plugin
-2. **Auto Update** (configurable):
+4. **Global Rules Sync**: Auto-sync `global-rules/CLAUDE.md` to `~/.claude/CLAUDE.md`
+5. **Auto Update** (configurable):
    - **Default behavior** (`interval_hours: 0`): Update Marketplaces and all plugins on every startup, ensuring everything is always up-to-date
    - **Scheduled update** (`interval_hours: 24`): Update Marketplaces and plugins every 24 hours
-   - **Update order**: Update Marketplaces (plugin marketplace metadata) first, then plugins themselves
+   - **Update order**: Update each Marketplace individually (from `known_marketplaces.json`), then update each plugin
    - **Session detection**: Automatically skip updates when running inside a Claude Code session (avoid nested session errors)
-3. **Smart Sync**:
+6. **Smart Sync**:
    - ✅ **Plugin list changes** (install/uninstall) → Generate snapshot and push to Git
    - ❌ **Version-only updates** (auto-update) → Don't push, avoid meaningless commits
-4. **Log Management**:
+7. **Log Management**:
    - Auto-rotation, max 10MB retention
    - Keep the most recent 8MB when size is exceeded
 
@@ -126,7 +133,8 @@ auto-manager/
 ├── hooks/
 │   └── hooks.json           # SessionStart Hook configuration
 ├── scripts/
-│   ├── session-start.sh     # Hook entry point (background execution)
+│   ├── session-start.py     # Hook entry point (cross-platform, background execution)
+│   ├── session-start.sh     # Hook entry point fallback (Unix only, backward compat)
 │   ├── auto-manager.py      # Main logic (install + update)
 │   ├── create-snapshot.py   # Generate plugin snapshot
 │   ├── git-sync.py          # Git sync script
@@ -226,6 +234,9 @@ Edit `config.json` to customize behavior:
                                  // 0 = update on every startup
                                  // 24 = update every 24 hours
     "notify": true               // Send system notifications
+  },
+  "global_sync": {
+    "enabled": true              // Sync global-rules/CLAUDE.md to ~/.claude/CLAUDE.md
   },
   "git_sync": {
     "enabled": true,             // Enable Git sync
@@ -505,6 +516,10 @@ git pull
 
 ## 📝 Version History
 
+- **1.1.0** (2026-02-14)
+  - Security fixes: session detection, notification escaping, Git whitelist
+  - Configuration constants, input validation, type hints
+  - Test cases (pytest)
 - **1.0.0** (2026-02-07)
   - Initial release
   - Auto-install, auto-update, Git sync support

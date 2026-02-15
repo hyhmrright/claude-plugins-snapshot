@@ -9,9 +9,13 @@
 - ✅ **自动安装**：启动时自动安装快照中缺失的插件
 - ✅ **智能重试**：安装失败自动重试，10 分钟间隔，最多 5 次
 - ✅ **自动更新**：可配置每次启动更新或定时更新（默认：每次启动时更新）
+- ✅ **Marketplace 逐个更新**：自动读取所有已知 marketplace 并逐个更新
 - ✅ **Git 同步**：快照自动同步到 GitHub，支持多机器共享
+- ✅ **仓库自同步**：启动时自动 `git pull` 拉取最新快照和配置
+- ✅ **自注册机制**：防止插件操作覆盖 `installed_plugins.json` 导致 Hook 丢失
+- ✅ **全局规则同步**：自动同步 `global-rules/CLAUDE.md` 到 `~/.claude/CLAUDE.md`
 - ✅ **跨平台通知**：更新完成后发送系统通知（macOS/Linux/Windows）
-- ✅ **后台执行**：不阻塞 Claude 启动
+- ✅ **后台执行**：不阻塞 Claude 启动（跨平台 Python 入口）
 - ✅ **日志管理**：自动轮转，最多保留 10MB
 - ✅ **一键安装**：新机器上运行一个脚本即可完成配置
 - ✅ **跨平台支持**：macOS、Linux、Windows、DevContainer
@@ -83,18 +87,21 @@ python install.py
 #### SessionStart Hook（会话启动时）
 
 **每次启动 Claude 时**：
-1. **安装缺失插件**：对比快照和当前安装，自动安装缺失的插件
+1. **自注册检查**：确保 auto-manager 在 `installed_plugins.json` 中注册（防止 Hook 丢失）
+2. **仓库自同步**：`git pull` 拉取最新快照和配置
+3. **安装缺失插件**：对比快照和当前安装，自动安装缺失的插件
    - **智能重试**：安装失败后 10 分钟自动重试，最多 5 次
    - **状态记录**：跟踪每个插件的安装状态和重试次数
-2. **自动更新**（可配置）：
+4. **全局规则同步**：自动同步 `global-rules/CLAUDE.md` 到 `~/.claude/CLAUDE.md`
+5. **自动更新**（可配置）：
    - **默认行为**（`interval_hours: 0`）：每次启动都更新 Marketplaces 和所有插件，确保始终最新
    - **定时更新**（`interval_hours: 24`）：每 24 小时更新一次 Marketplaces 和插件
-   - **更新顺序**：先更新 Marketplaces（插件市场元数据），再更新插件本身
+   - **更新顺序**：先逐个更新 Marketplaces（从 `known_marketplaces.json` 读取），再逐个更新插件
    - **会话检测**：在 Claude Code 会话中自动跳过更新（避免嵌套会话错误）
-3. **智能同步**：
+6. **智能同步**：
    - ✅ **插件列表变化**（安装/卸载）→ 生成快照并推送到 Git
    - ❌ **只是版本更新**（自动更新）→ 不推送，避免无意义的 commit
-4. **日志管理**：
+7. **日志管理**：
    - 自动轮转，最多保留 10MB
    - 超出时保留最近 8MB 内容
 
@@ -126,7 +133,8 @@ auto-manager/
 ├── hooks/
 │   └── hooks.json           # SessionStart Hook 配置
 ├── scripts/
-│   ├── session-start.sh     # Hook 入口（后台执行）
+│   ├── session-start.py     # Hook 入口（跨平台，后台执行）
+│   ├── session-start.sh     # Hook 入口备选（仅 Unix，向后兼容）
 │   ├── auto-manager.py      # 主逻辑（安装 + 更新）
 │   ├── create-snapshot.py   # 生成插件快照
 │   ├── git-sync.py          # Git 同步脚本
@@ -226,6 +234,9 @@ cat ~/.claude/plugins/auto-manager/snapshots/current.json
                                  // 0 = 每次启动都更新
                                  // 24 = 每 24 小时更新一次
     "notify": true               // 是否发送系统通知
+  },
+  "global_sync": {
+    "enabled": true              // 是否同步 global-rules/CLAUDE.md 到 ~/.claude/CLAUDE.md
   },
   "git_sync": {
     "enabled": true,             // 是否同步到 Git
@@ -505,6 +516,10 @@ git pull
 
 ## 📝 版本历史
 
+- **1.1.0** (2026-02-14)
+  - 安全修复：会话检测、通知消息转义、Git 白名单
+  - 常量化配置、输入验证、类型提示
+  - 测试用例（pytest）
 - **1.0.0** (2026-02-07)
   - 初始版本
   - 支持自动安装、自动更新、Git 同步
