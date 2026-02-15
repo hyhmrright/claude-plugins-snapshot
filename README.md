@@ -1,3 +1,5 @@
+[English](README.en.md) | 简体中文
+
 # Claude Code 插件自动管理器
 
 自动管理 Claude Code 插件的安装和更新，支持跨机器同步配置。
