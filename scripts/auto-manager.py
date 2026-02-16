@@ -30,6 +30,8 @@ GLOBAL_RULES_TARGET = CLAUDE_DIR / "CLAUDE.md"
 GLOBAL_SKILLS_SOURCE_DIR = AUTO_MANAGER_DIR / "global-skills"
 GLOBAL_SKILLS_TARGET_DIR = CLAUDE_DIR / "skills"
 KNOWN_MARKETPLACES_FILE = CLAUDE_DIR / "plugins" / "known_marketplaces.json"
+GLOBAL_SETTINGS_LOCAL = CLAUDE_DIR / "settings.local.json"
+SESSION_START_SCRIPT = AUTO_MANAGER_DIR / "scripts" / "session-start.sh"
 
 # 常量配置
 # 日志管理
@@ -612,6 +614,57 @@ def ensure_self_registered() -> None:
         log(f"Error ensuring self-registration: {e}")
 
 
+def _has_session_start_hook(data: Dict[str, Any], command: str) -> bool:
+    """检查 settings.local.json 中是否已存在指定命令的 SessionStart Hook"""
+    for hook_group in data.get("hooks", {}).get("SessionStart", []):
+        for hook in hook_group.get("hooks", []):
+            if hook.get("command") == command:
+                return True
+    return False
+
+
+def _build_hook_entry(command: str) -> Dict[str, Any]:
+    """构建 SessionStart Hook 配置条目"""
+    return {
+        "hooks": [
+            {
+                "type": "command",
+                "command": command,
+                "timeout": 30,
+            }
+        ]
+    }
+
+
+def ensure_global_hook() -> None:
+    """确保 SessionStart Hook 在用户全局 settings.local.json 中注册
+
+    将 Hook 从插件级别（hooks/hooks.json，依赖 installed_plugins.json）
+    迁移到用户全局级别（~/.claude/settings.local.json），避免因
+    installed_plugins.json 被重建导致 Hook 丢失的死循环问题。
+    """
+    try:
+        data = json.loads(GLOBAL_SETTINGS_LOCAL.read_text(encoding="utf-8")) if GLOBAL_SETTINGS_LOCAL.exists() else {}
+
+        script_path = str(SESSION_START_SCRIPT)
+        if _has_session_start_hook(data, script_path):
+            log("Global hook already configured in settings.local.json")
+            return
+
+        data.setdefault("hooks", {}).setdefault("SessionStart", []).append(
+            _build_hook_entry(script_path)
+        )
+
+        # 原子写入
+        GLOBAL_SETTINGS_LOCAL.parent.mkdir(parents=True, exist_ok=True)
+        temp_file = GLOBAL_SETTINGS_LOCAL.with_suffix(".json.tmp")
+        temp_file.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        temp_file.rename(GLOBAL_SETTINGS_LOCAL)
+        log(f"✓ Global hook configured in {GLOBAL_SETTINGS_LOCAL}")
+    except Exception as e:
+        log(f"Error ensuring global hook: {e}")
+
+
 def sync_to_git(config: Dict[str, Any]) -> bool:
     """同步快照到 Git 仓库"""
     if not config["git_sync"]["enabled"]:
@@ -849,6 +902,9 @@ def main() -> None:
 
     # 确保自身在 installed_plugins.json 中注册（防止被插件更新操作覆盖）
     ensure_self_registered()
+
+    # 确保全局 Hook 已配置（不依赖 installed_plugins.json）
+    ensure_global_hook()
 
     # 0. 同步 auto-manager 仓库自身（拉取最新快照和配置）
     # 在 load_config() 之前执行，确保使用远程最新的配置和快照。

@@ -13,6 +13,7 @@
 - ✅ **Git 同步**：快照自动同步到 GitHub，支持多机器共享
 - ✅ **仓库自同步**：启动时自动 `git pull` 拉取最新快照和配置
 - ✅ **自注册机制**：启动时及插件操作后自动注册，防止 `installed_plugins.json` 被重建导致 Hook 丢失
+- ✅ **全局 Hook**：将 Hook 注册到 `~/.claude/settings.local.json`，不依赖 `installed_plugins.json`，从根本上解决 Hook 丢失问题
 - ✅ **全局规则同步**：自动同步 `global-rules/CLAUDE.md` 到 `~/.claude/CLAUDE.md`
 - ✅ **全局 Skills 同步**：自动同步 `global-skills/` 目录到 `~/.claude/skills/`
 - ✅ **跨平台通知**：更新完成后发送系统通知（macOS/Linux/Windows）
@@ -88,22 +89,23 @@ python install.py
 #### SessionStart Hook（会话启动时）
 
 **每次启动 Claude 时**：
-1. **自注册检查**：确保 auto-manager 在 `installed_plugins.json` 中注册（防止 Hook 丢失）
-2. **仓库自同步**：`git pull` 拉取最新快照和配置
-3. **安装缺失插件**：对比快照和当前安装，自动安装缺失的插件
+1. **自注册检查**：确保 auto-manager 在 `installed_plugins.json` 中注册（防止插件级 Hook 丢失）
+2. **全局 Hook 检查**：确保 Hook 在 `~/.claude/settings.local.json` 中注册（不依赖 `installed_plugins.json`）
+3. **仓库自同步**：`git pull` 拉取最新快照和配置
+4. **安装缺失插件**：对比快照和当前安装，自动安装缺失的插件
    - **智能重试**：安装失败后 10 分钟自动重试，最多 5 次
    - **状态记录**：跟踪每个插件的安装状态和重试次数
-4. **全局规则同步**：自动同步 `global-rules/CLAUDE.md` 到 `~/.claude/CLAUDE.md`
-5. **全局 Skills 同步**：自动同步 `global-skills/` 目录到 `~/.claude/skills/`
-6. **自动更新**（可配置）：
+5. **全局规则同步**：自动同步 `global-rules/CLAUDE.md` 到 `~/.claude/CLAUDE.md`
+6. **全局 Skills 同步**：自动同步 `global-skills/` 目录到 `~/.claude/skills/`
+7. **自动更新**（可配置）：
    - **默认行为**（`interval_hours: 0`）：每次启动都更新 Marketplaces 和所有插件，确保始终最新
    - **定时更新**（`interval_hours: 24`）：每 24 小时更新一次 Marketplaces 和插件
    - **更新顺序**：先逐个更新 Marketplaces（从 `known_marketplaces.json` 读取），再逐个更新插件
    - **会话检测**：在 Claude Code 会话中自动跳过更新（避免嵌套会话错误）
-7. **智能同步**：
+8. **智能同步**：
    - ✅ **插件列表变化**（安装/卸载）→ 生成快照并推送到 Git
    - ❌ **只是版本更新**（自动更新）→ 不推送，避免无意义的 commit
-8. **日志管理**：
+9. **日志管理**：
    - 自动轮转，最多保留 10MB
    - 超出时保留最近 8MB 内容
 
@@ -503,17 +505,25 @@ git pull
 
 ### Hook 未触发
 
-1. 确认插件已启用：
+1. 检查全局 Hook 配置：
+   ```bash
+   cat ~/.claude/settings.local.json | python3 -m json.tool
+   ```
+   确认 `hooks.SessionStart` 中包含指向 `session-start.sh` 的条目。
+
+2. 修复全局 Hook：
+   ```bash
+   python3 ~/.claude/plugins/auto-manager/install.py
+   # 或
+   python3 ~/.claude/plugins/auto-manager/scripts/auto-manager.py
+   ```
+
+3. 确认插件已启用（备选 Hook）：
    ```bash
    grep "auto-manager" ~/.claude/settings.json
    ```
 
-2. 检查 Hook 配置：
-   ```bash
-   cat ~/.claude/plugins/auto-manager/hooks/hooks.json
-   ```
-
-3. 重启 Claude Code
+4. 重启 Claude Code
 
 ## 📚 相关链接
 

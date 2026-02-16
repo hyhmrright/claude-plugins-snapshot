@@ -14,9 +14,10 @@ This is a Claude Code Plugin Auto-Manager that implements automatic plugin insta
 
 ### Three-Layer Automation Architecture
 
-1. **Hook Layer** (`hooks/hooks.json`)
-   - SessionStart Hook triggers on every Claude Code startup
-   - Calls `scripts/session-start.sh` for background execution (avoids blocking startup)
+1. **Hook Layer** (Dual Guarantee)
+   - **Global Hook** (primary): Registered in `~/.claude/settings.local.json`, independent of `installed_plugins.json`, always triggers
+   - **Plugin Hook** (fallback): `hooks/hooks.json`, depends on plugin registration, kept for backward compatibility
+   - Both call `scripts/session-start.sh` for background execution (avoids blocking startup)
    - `scripts/session-start.py` provides Windows alternative entry point (configure in `install.py`)
    - Timeout setting: 30 seconds
 
@@ -26,6 +27,7 @@ This is a Claude Code Plugin Auto-Manager that implements automatic plugin insta
    - **Session detection**: Auto-detects if running inside a Claude Code session (checks `CLAUDECODE` environment variable) to avoid nested session errors
    - **Self-sync**: Auto `git pull` on startup to fetch latest snapshot and config
    - **Self-registration**: Ensures itself is registered in `installed_plugins.json` on startup and after each plugin install/update, preventing Hook loss from Claude Code rebuilding the file
+   - **Global Hook guarantee**: Registers SessionStart Hook in `~/.claude/settings.local.json`, independent of `installed_plugins.json`, fundamentally solving the Hook loss deadlock problem
    - **Per-marketplace updates**: Reads `known_marketplaces.json` and updates each marketplace individually (with name validation)
    - **Scheduled updates**: Based on `interval_hours` configuration in `config.json` (0=every startup, 24=daily update)
    - **Log management**: Auto-rotation, truncates to 8MB when exceeding 10MB
@@ -241,50 +243,53 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
    - Purpose: Prevent unlimited accumulation of backup files consuming disk space
 3. **Self-registration check**: Ensures auto-manager is registered in `installed_plugins.json`
    - Prevents loss when Claude Code plugin operations rebuild the file
-   - Missing registration causes Hook to stop triggering
-4. **Self-sync**: `git pull --ff-only` to fetch latest snapshot and config
+   - Missing registration causes plugin-level Hook to stop triggering
+4. **Global Hook check**: Ensures SessionStart Hook is registered in `~/.claude/settings.local.json`
+   - Independent of `installed_plugins.json`, always triggers
+   - Fundamentally solves the Hook loss deadlock problem
+5. **Self-sync**: `git pull --ff-only` to fetch latest snapshot and config
    - Runs before `load_config()` to ensure latest remote config is used
    - Not controlled by `git_sync.enabled` (read-only operation, config not yet loaded)
-5. **Session detection**: Checks `CLAUDECODE` environment variable
+6. **Session detection**: Checks `CLAUDECODE` environment variable
    - If inside a Claude Code session → Skip updates (avoid nested session errors)
    - If not in a session → Execute normally
    - `session-start.sh` unsets this variable before launching the background process
-6. **Install missing plugins**:
+7. **Install missing plugins**:
    - Read plugin list from `snapshots/current.json`
    - Compare with installed list in `~/.claude/plugins/installed_plugins.json`
    - Install missing plugins
    - Record failures to `.last-install-state.json` for later retry
    - **Re-register self after install** (`claude plugin install` rebuilds `installed_plugins.json`)
-7. **Global rules sync**:
+8. **Global rules sync**:
    - Read `global-rules/CLAUDE.md`
    - Compare with `~/.claude/CLAUDE.md` contents
    - Changed → Update target file
    - Unchanged → Skip
-8. **Global skills sync**:
+9. **Global skills sync**:
    - Iterate each subdirectory under `global-skills/`
    - Read `SKILL.md` and compare with `~/.claude/skills/<name>/SKILL.md`
    - Changed → Update target file
    - Unchanged → Skip
-9. **Smart retry**:
+10. **Smart retry**:
    - Read failure records from `.last-install-state.json`
    - Check if 10-minute retry interval has elapsed
    - Retry count under 5 → Retry installation
    - Over 5 → Temporarily give up, wait for manual intervention
-10. **Scheduled update** (configurable):
+11. **Scheduled update** (configurable):
     - Check `.last-update` timestamp
     - If time since last update exceeds `interval_hours` → Execute update
     - `interval_hours: 0` → Update on every startup
-11. **Update flow**:
+12. **Update flow**:
     - First update each Marketplace individually (`claude plugin marketplace update <name>`)
     - Reads all marketplaces from `~/.claude/plugins/known_marketplaces.json`
     - Then update each installed plugin individually (`claude plugin update <name>`)
     - **Re-register self after update** (`claude plugin update` rebuilds `installed_plugins.json`)
-12. **Git sync**:
+13. **Git sync**:
     - Generate new snapshot
     - Compare if plugin list has changed
     - Changed → Commit and push
     - Unchanged → Skip (only version numbers updated)
-13. **System notifications** (configurable):
+14. **System notifications** (configurable):
     - macOS: Uses `osascript`
     - Linux: Uses `notify-send`
     - Windows: Uses PowerShell Toast
@@ -378,11 +383,13 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 
 ### Hook Not Triggering
 
-1. **Most common cause**: `auto-manager` not registered in `installed_plugins.json` (overwritten when `claude plugin install/update` rebuilds the file)
+1. **Check global Hook**: `cat ~/.claude/settings.local.json | python3 -m json.tool`
+   - Verify `hooks.SessionStart` contains an entry pointing to `session-start.sh`
+   - Fix: Run `python3 install.py` or `python3 scripts/auto-manager.py` (will auto-configure global Hook)
+2. **Check plugin-level Hook** (fallback): `auto-manager` not registered in `installed_plugins.json` (overwritten when `claude plugin install/update` rebuilds the file)
    - Check: `python3 -c "import json; d=json.load(open('$HOME/.claude/plugins/installed_plugins.json')); print('auto-manager' in d.get('plugins', {}))"`
    - Fix: Run `python3 scripts/auto-manager.py` (will auto-re-register), or run `python3 install.py`
-2. Check plugin enabled state: `cat ~/.claude/settings.json | grep enabledPlugins`
-3. Check Hook configuration: `cat hooks/hooks.json`
+3. Check plugin enabled state: `cat ~/.claude/settings.json | grep enabledPlugins`
 4. Restart Claude Code
 5. View startup logs: `tail -f logs/auto-manager.log`
 

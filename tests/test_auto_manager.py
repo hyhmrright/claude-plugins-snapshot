@@ -18,6 +18,7 @@ _auto_manager = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_auto_manager)
 
 # Import constants and functions from the module under test
+ensure_global_hook = _auto_manager.ensure_global_hook
 ensure_self_registered = _auto_manager.ensure_self_registered
 get_all_marketplaces = _auto_manager.get_all_marketplaces
 sync_self_repo = _auto_manager.sync_self_repo
@@ -224,6 +225,96 @@ class TestEnsureSelfRegistered:
         """测试文件不存在时不报错"""
         monkeypatch.setattr(_auto_manager, "CLAUDE_DIR", tmp_path / "nonexistent")
         ensure_self_registered()  # Should not raise
+
+
+class TestEnsureGlobalHook:
+    """测试全局 Hook 配置"""
+
+    @staticmethod
+    def _setup(tmp_path, monkeypatch, settings_content=None, script_subpath="scripts/session-start.sh"):
+        """设置测试环境，返回 (settings_local, script_path)"""
+        settings_local = tmp_path / "settings.local.json"
+        if settings_content is not None:
+            settings_local.write_text(settings_content)
+        script_path = tmp_path / script_subpath
+        monkeypatch.setattr(_auto_manager, "GLOBAL_SETTINGS_LOCAL", settings_local)
+        monkeypatch.setattr(_auto_manager, "SESSION_START_SCRIPT", script_path)
+        return settings_local, script_path
+
+    def test_creates_settings_local_if_not_exists(self, tmp_path, monkeypatch):
+        """测试文件不存在时创建 settings.local.json"""
+        settings_local, script_path = self._setup(tmp_path, monkeypatch)
+
+        ensure_global_hook()
+
+        assert settings_local.exists()
+        data = json.loads(settings_local.read_text())
+        hooks = data["hooks"]["SessionStart"]
+        assert len(hooks) == 1
+        assert hooks[0]["hooks"][0]["command"] == str(script_path)
+
+    def test_adds_hook_to_empty_settings(self, tmp_path, monkeypatch):
+        """测试空文件时添加 Hook"""
+        settings_local, script_path = self._setup(tmp_path, monkeypatch, settings_content="{}")
+
+        ensure_global_hook()
+
+        data = json.loads(settings_local.read_text())
+        assert "hooks" in data
+        assert "SessionStart" in data["hooks"]
+        assert data["hooks"]["SessionStart"][0]["hooks"][0]["command"] == str(script_path)
+
+    def test_skips_if_hook_already_exists(self, tmp_path, monkeypatch, capsys):
+        """测试已有 Hook 时跳过"""
+        script_path = tmp_path / "scripts" / "session-start.sh"
+        existing = {
+            "hooks": {
+                "SessionStart": [
+                    {"hooks": [{"type": "command", "command": str(script_path), "timeout": 30}]}
+                ]
+            }
+        }
+        settings_local, _ = self._setup(
+            tmp_path, monkeypatch, settings_content=json.dumps(existing)
+        )
+
+        ensure_global_hook()
+
+        assert "already configured" in capsys.readouterr().out
+        assert json.loads(settings_local.read_text()) == existing
+
+    def test_preserves_existing_settings(self, tmp_path, monkeypatch):
+        """测试保留已有配置"""
+        existing = {
+            "hooks": {
+                "PreToolUse": [{"hooks": [{"type": "command", "command": "echo test"}]}]
+            },
+            "other_setting": "value",
+        }
+        settings_local, _ = self._setup(
+            tmp_path, monkeypatch, settings_content=json.dumps(existing)
+        )
+
+        ensure_global_hook()
+
+        data = json.loads(settings_local.read_text())
+        assert data["other_setting"] == "value"
+        assert "PreToolUse" in data["hooks"]
+        assert "SessionStart" in data["hooks"]
+
+    def test_handles_windows_path(self, tmp_path, monkeypatch):
+        """测试路径使用 str(path) 正确处理"""
+        settings_local, script_path = self._setup(
+            tmp_path, monkeypatch,
+            settings_content="{}",
+            script_subpath="plugins/auto-manager/scripts/session-start.sh",
+        )
+
+        ensure_global_hook()
+
+        data = json.loads(settings_local.read_text())
+        command = data["hooks"]["SessionStart"][0]["hooks"][0]["command"]
+        assert command == str(script_path)
 
 
 class TestGitSync:

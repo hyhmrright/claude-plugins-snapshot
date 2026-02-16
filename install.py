@@ -174,6 +174,53 @@ def set_permissions(plugin_dir: Path) -> None:
                 script.chmod(0o744)
 
 
+def _has_session_start_hook(data: dict, command: str) -> bool:
+    """检查 settings 中是否已存在指定命令的 SessionStart Hook"""
+    for hook_group in data.get("hooks", {}).get("SessionStart", []):
+        for hook in hook_group.get("hooks", []):
+            if hook.get("command") == command:
+                return True
+    return False
+
+
+def setup_global_hook(plugin_dir: Path) -> bool:
+    """在 ~/.claude/settings.local.json 中设置全局 SessionStart Hook"""
+    claude_dir = get_claude_dir()
+    settings_local = claude_dir / "settings.local.json"
+    script_path = str(plugin_dir / "scripts" / "session-start.sh")
+
+    try:
+        data = json.loads(settings_local.read_text(encoding="utf-8")) if settings_local.exists() else {}
+
+        if _has_session_start_hook(data, script_path):
+            log_info("全局 Hook 已配置")
+            return True
+
+        hook_entry = {
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": script_path,
+                    "timeout": 30,
+                }
+            ]
+        }
+        data.setdefault("hooks", {}).setdefault("SessionStart", []).append(hook_entry)
+
+        # 原子写入
+        settings_local.parent.mkdir(parents=True, exist_ok=True)
+        temp_file = settings_local.with_suffix(".json.tmp")
+        temp_file.write_text(
+            json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
+        temp_file.rename(settings_local)
+        log_info(f"已配置全局 Hook: {settings_local}")
+        return True
+    except Exception as e:
+        log_error(f"配置全局 Hook 失败: {e}")
+        return False
+
+
 def check_snapshot(plugin_dir: Path) -> None:
     """检查快照文件"""
     snapshot_file = plugin_dir / "snapshots" / "current.json"
@@ -217,10 +264,13 @@ def main() -> int:
     if not update_installed_plugins(plugin_dir):
         return 1
 
-    # 5. 检查快照
+    # 5. 设置全局 Hook（不依赖 installed_plugins.json）
+    setup_global_hook(plugin_dir)
+
+    # 6. 检查快照
     check_snapshot(plugin_dir)
 
-    # 6. 创建日志目录
+    # 7. 创建日志目录
     logs_dir = plugin_dir / "logs"
     logs_dir.mkdir(exist_ok=True)
 

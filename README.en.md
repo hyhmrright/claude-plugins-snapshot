@@ -13,6 +13,7 @@ Automatically manage Claude Code plugin installation and updates, with cross-mac
 - ✅ **Git Sync**: Snapshots automatically synced to GitHub for multi-machine sharing
 - ✅ **Self-sync**: Auto `git pull` on startup to fetch latest snapshot and config
 - ✅ **Self-registration**: Auto-registers on startup and after plugin operations, preventing Hook loss when `installed_plugins.json` is rebuilt
+- ✅ **Global Hook**: Registers Hook in `~/.claude/settings.local.json`, independent of `installed_plugins.json`, fundamentally solving the Hook loss problem
 - ✅ **Global Rules Sync**: Auto-sync `global-rules/CLAUDE.md` to `~/.claude/CLAUDE.md`
 - ✅ **Global Skills Sync**: Auto-sync `global-skills/` directory to `~/.claude/skills/`
 - ✅ **Cross-platform Notifications**: System notifications after updates (macOS/Linux/Windows)
@@ -88,22 +89,23 @@ The current machine is already set up, and snapshots are synced to GitHub.
 #### SessionStart Hook (On Session Start)
 
 **Every time Claude starts**:
-1. **Self-registration Check**: Ensure auto-manager is registered in `installed_plugins.json` (prevents Hook loss)
-2. **Self-sync**: `git pull` to fetch latest snapshot and config
-3. **Install Missing Plugins**: Compare snapshot with current installation, auto-install missing plugins
+1. **Self-registration Check**: Ensure auto-manager is registered in `installed_plugins.json` (prevents plugin-level Hook loss)
+2. **Global Hook Check**: Ensure Hook is registered in `~/.claude/settings.local.json` (independent of `installed_plugins.json`)
+3. **Self-sync**: `git pull` to fetch latest snapshot and config
+4. **Install Missing Plugins**: Compare snapshot with current installation, auto-install missing plugins
    - **Smart Retry**: Auto-retry after 10 minutes on failure, up to 5 attempts
    - **State Tracking**: Track installation status and retry count for each plugin
-4. **Global Rules Sync**: Auto-sync `global-rules/CLAUDE.md` to `~/.claude/CLAUDE.md`
-5. **Global Skills Sync**: Auto-sync `global-skills/` directory to `~/.claude/skills/`
-6. **Auto Update** (configurable):
+5. **Global Rules Sync**: Auto-sync `global-rules/CLAUDE.md` to `~/.claude/CLAUDE.md`
+6. **Global Skills Sync**: Auto-sync `global-skills/` directory to `~/.claude/skills/`
+7. **Auto Update** (configurable):
    - **Default behavior** (`interval_hours: 0`): Update Marketplaces and all plugins on every startup, ensuring everything is always up-to-date
    - **Scheduled update** (`interval_hours: 24`): Update Marketplaces and plugins every 24 hours
    - **Update order**: Update each Marketplace individually (from `known_marketplaces.json`), then update each plugin
    - **Session detection**: Automatically skip updates when running inside a Claude Code session (avoid nested session errors)
-7. **Smart Sync**:
+8. **Smart Sync**:
    - ✅ **Plugin list changes** (install/uninstall) → Generate snapshot and push to Git
    - ❌ **Version-only updates** (auto-update) → Don't push, avoid meaningless commits
-8. **Log Management**:
+9. **Log Management**:
    - Auto-rotation, max 10MB retention
    - Keep the most recent 8MB when size is exceeded
 
@@ -503,17 +505,25 @@ git pull
 
 ### Hook Not Triggering
 
-1. Verify plugin is enabled:
+1. Check global Hook configuration:
+   ```bash
+   cat ~/.claude/settings.local.json | python3 -m json.tool
+   ```
+   Verify `hooks.SessionStart` contains an entry pointing to `session-start.sh`.
+
+2. Fix global Hook:
+   ```bash
+   python3 ~/.claude/plugins/auto-manager/install.py
+   # or
+   python3 ~/.claude/plugins/auto-manager/scripts/auto-manager.py
+   ```
+
+3. Verify plugin is enabled (fallback Hook):
    ```bash
    grep "auto-manager" ~/.claude/settings.json
    ```
 
-2. Check Hook configuration:
-   ```bash
-   cat ~/.claude/plugins/auto-manager/hooks/hooks.json
-   ```
-
-3. Restart Claude Code
+4. Restart Claude Code
 
 ## 📚 Related Links
 
