@@ -135,16 +135,22 @@ auto-manager/
 ├── .claude-plugin/
 │   └── plugin.json          # Plugin metadata
 ├── hooks/
-│   └── hooks.json           # SessionStart Hook configuration
+│   └── hooks.json           # SessionStart Hook configuration (plugin-level, fallback)
 ├── scripts/
-│   ├── session-start.sh     # Hook entry point (background execution)
+│   ├── session-start.sh     # Hook entry point (background execution, nohup + disown)
 │   ├── session-start.py     # Hook entry point fallback (Windows)
 │   ├── auto-manager.py      # Main logic (install + update)
 │   ├── create-snapshot.py   # Generate plugin snapshot
 │   ├── git-sync.py          # Git sync script
 │   ├── sync-snapshot.sh     # Manual snapshot sync to Git
 │   └── sync-snapshot.py     # Manual snapshot sync (cross-platform)
+├── global-rules/            # Global rules (Git-tracked, synced to ~/.claude/CLAUDE.md)
+│   └── CLAUDE.md
 ├── global-skills/           # Global Skills (Git-tracked, synced to ~/.claude/skills/)
+│   └── sync-snapshot/
+│       └── SKILL.md
+├── tests/                   # Test cases (pytest)
+│   └── test_auto_manager.py
 ├── snapshots/
 │   ├── current.json         # Current snapshot (single snapshot file)
 │   ├── .last-update         # Last update timestamp (local)
@@ -152,7 +158,8 @@ auto-manager/
 ├── logs/                    # Runtime logs (local)
 │   └── auto-manager.log
 ├── config.json              # Configuration file
-├── install.sh               # New machine install script
+├── install.py               # New machine install script (recommended, cross-platform)
+├── install.sh               # New machine install script (Unix only)
 ├── .gitignore              # Git ignore file
 └── README.md               # This document
 ```
@@ -532,6 +539,15 @@ git pull
 
 ## 📝 Version History
 
+- **Unreleased**
+  - Global Hook: migrated to `~/.claude/settings.local.json`, no longer depends on `installed_plugins.json`
+  - Hook matcher: use `matcher: "startup"` to only trigger on new session start
+  - Startup delay: 10-second wait for Claude Code initialization, fixing race condition
+  - SIGHUP protection: use `nohup` + `disown` to prevent background process termination
+  - Plugin update: skip local plugins, support base name fallback
+  - Global rules sync, global skills sync
+  - Self-sync, self-registration mechanism
+  - Skip local plugins (without `@marketplace` suffix) in snapshot and install
 - **1.1.0** (2026-02-14)
   - Security fixes: session detection, notification escaping, Git whitelist
   - Configuration constants, input validation, type hints

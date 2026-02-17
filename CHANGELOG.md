@@ -22,7 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Self-registration deadlock: call `ensure_self_registered()` after plugin install/update (not just on startup), because `claude plugin install/update` rebuilds `installed_plugins.json` and drops auto-manager registration
 - Skip local plugins (without `@marketplace` suffix) in snapshot generation and install, preventing auto-manager from being incorrectly included in `current.json` and causing perpetual install failures
 - Race condition: add 10-second startup delay in `session-start.sh` to wait for Claude Code initialization, fixing all plugin updates failing with "not installed" error
+- SIGHUP killing background process: use `nohup` + `disown` in `session-start.sh` to ensure background process survives parent shell exit
+- Plugin update command format: fallback to base name (without `@marketplace`) when full name returns "not installed" error
 - Plugin update retry logic: check both stdout and stderr for "not installed" error (claude CLI may output errors to either stream)
+- Plugin update: skip local plugins (without `@marketplace` suffix) in `update_all_plugins()`
 - Global hook auto-upgrade: `ensure_global_hook()` now detects and upgrades old hooks missing `matcher` field
 
 ## [1.1.0] - 2026-02-14
