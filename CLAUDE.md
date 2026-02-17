@@ -243,55 +243,55 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
    - 删除 `~/.claude.json.backup.<timestamp>` 格式的文件
    - 保留 `~/.claude.json.backup`（主备份文件）
    - 目的：防止备份文件无限累积占用磁盘空间
-3. **自注册检查**：确保 auto-manager 在 `installed_plugins.json` 中注册
+4. **自注册检查**：确保 auto-manager 在 `installed_plugins.json` 中注册
    - 防止被 Claude Code 插件操作重建文件时覆盖
    - 丢失注册信息会导致插件级别 Hook 不再被触发
-4. **全局 Hook 检查**：确保 SessionStart Hook 在 `~/.claude/settings.local.json` 中注册
+5. **全局 Hook 检查**：确保 SessionStart Hook 在 `~/.claude/settings.local.json` 中注册
    - 不依赖 `installed_plugins.json`，始终触发
    - 从根本上解决 Hook 丢失的死循环问题
-5. **仓库自同步**：`git pull --ff-only` 拉取最新快照和配置
+6. **仓库自同步**：`git pull --ff-only` 拉取最新快照和配置
    - 在 `load_config()` 之前执行，确保使用远程最新配置
    - 不受 `git_sync.enabled` 控制（只读操作且配置尚未加载）
-6. **会话检测**：检查 `CLAUDECODE` 环境变量
+7. **会话检测**：检查 `CLAUDECODE` 环境变量
    - 如果在 Claude Code 会话中 → 跳过更新（避免嵌套会话错误）
    - 如果不在会话中 → 正常执行
    - `session-start.sh` 在启动后台进程前会 unset 此变量
-7. **安装缺失插件**：
+8. **安装缺失插件**：
    - 读取 `snapshots/current.json` 中的插件列表
    - 对比 `~/.claude/plugins/installed_plugins.json` 中的已安装列表
    - 安装缺失的插件
    - 失败时记录到 `.last-install-state.json` 供后续重试
    - **安装后重新注册自身**（`claude plugin install` 会重建 `installed_plugins.json`）
-8. **全局规则同步**：
+9. **全局规则同步**：
    - 读取 `global-rules/CLAUDE.md`
    - 对比 `~/.claude/CLAUDE.md` 内容
    - 有变化 → 更新目标文件
    - 无变化 → 跳过
-9. **全局 Skills 同步**：
-   - 遍历 `global-skills/` 下的每个子目录
-   - 读取 `SKILL.md` 并对比 `~/.claude/skills/<name>/SKILL.md` 内容
-   - 有变化 → 更新目标文件
-   - 无变化 → 跳过
-10. **智能重试**：
+10. **全局 Skills 同步**：
+    - 遍历 `global-skills/` 下的每个子目录
+    - 读取 `SKILL.md` 并对比 `~/.claude/skills/<name>/SKILL.md` 内容
+    - 有变化 → 更新目标文件
+    - 无变化 → 跳过
+11. **智能重试**：
     - 读取 `.last-install-state.json` 中的失败记录
     - 检查是否超过 10 分钟重试间隔
     - 重试次数未超过 5 次 → 重试安装
     - 超过 5 次 → 暂时放弃，等待手动干预
-11. **定时更新**（可配置）：
+12. **定时更新**（可配置）：
     - 检查 `.last-update` 时间戳
     - 如果距离上次更新超过 `interval_hours` → 执行更新
     - `interval_hours: 0` → 每次启动都更新
-12. **更新流程**：
+13. **更新流程**：
     - 先逐个更新 Marketplaces（`claude plugin marketplace update <name>`）
     - 从 `~/.claude/plugins/known_marketplaces.json` 读取所有 marketplace
     - 再逐个更新所有已安装插件（`claude plugin update <name>`）
     - **更新后重新注册自身**（`claude plugin update` 会重建 `installed_plugins.json`）
-13. **Git 同步**：
+14. **Git 同步**：
     - 生成新快照
     - 对比插件列表是否变化
     - 有变化 → commit 并 push
     - 无变化 → 跳过（只是版本号更新）
-14. **系统通知**（可配置）：
+15. **系统通知**（可配置）：
     - macOS：使用 `osascript`
     - Linux：使用 `notify-send`
     - Windows：使用 PowerShell Toast

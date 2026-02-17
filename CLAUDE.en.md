@@ -243,55 +243,55 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
    - Deletes files matching `~/.claude.json.backup.<timestamp>` pattern
    - Preserves `~/.claude.json.backup` (main backup file)
    - Purpose: Prevent unlimited accumulation of backup files consuming disk space
-3. **Self-registration check**: Ensures auto-manager is registered in `installed_plugins.json`
+4. **Self-registration check**: Ensures auto-manager is registered in `installed_plugins.json`
    - Prevents loss when Claude Code plugin operations rebuild the file
    - Missing registration causes plugin-level Hook to stop triggering
-4. **Global Hook check**: Ensures SessionStart Hook is registered in `~/.claude/settings.local.json`
+5. **Global Hook check**: Ensures SessionStart Hook is registered in `~/.claude/settings.local.json`
    - Independent of `installed_plugins.json`, always triggers
    - Fundamentally solves the Hook loss deadlock problem
-5. **Self-sync**: `git pull --ff-only` to fetch latest snapshot and config
+6. **Self-sync**: `git pull --ff-only` to fetch latest snapshot and config
    - Runs before `load_config()` to ensure latest remote config is used
    - Not controlled by `git_sync.enabled` (read-only operation, config not yet loaded)
-6. **Session detection**: Checks `CLAUDECODE` environment variable
+7. **Session detection**: Checks `CLAUDECODE` environment variable
    - If inside a Claude Code session → Skip updates (avoid nested session errors)
    - If not in a session → Execute normally
    - `session-start.sh` unsets this variable before launching the background process
-7. **Install missing plugins**:
+8. **Install missing plugins**:
    - Read plugin list from `snapshots/current.json`
    - Compare with installed list in `~/.claude/plugins/installed_plugins.json`
    - Install missing plugins
    - Record failures to `.last-install-state.json` for later retry
    - **Re-register self after install** (`claude plugin install` rebuilds `installed_plugins.json`)
-8. **Global rules sync**:
+9. **Global rules sync**:
    - Read `global-rules/CLAUDE.md`
    - Compare with `~/.claude/CLAUDE.md` contents
    - Changed → Update target file
    - Unchanged → Skip
-9. **Global skills sync**:
-   - Iterate each subdirectory under `global-skills/`
-   - Read `SKILL.md` and compare with `~/.claude/skills/<name>/SKILL.md`
-   - Changed → Update target file
-   - Unchanged → Skip
-10. **Smart retry**:
-   - Read failure records from `.last-install-state.json`
-   - Check if 10-minute retry interval has elapsed
-   - Retry count under 5 → Retry installation
-   - Over 5 → Temporarily give up, wait for manual intervention
-11. **Scheduled update** (configurable):
+10. **Global skills sync**:
+    - Iterate each subdirectory under `global-skills/`
+    - Read `SKILL.md` and compare with `~/.claude/skills/<name>/SKILL.md`
+    - Changed → Update target file
+    - Unchanged → Skip
+11. **Smart retry**:
+    - Read failure records from `.last-install-state.json`
+    - Check if 10-minute retry interval has elapsed
+    - Retry count under 5 → Retry installation
+    - Over 5 → Temporarily give up, wait for manual intervention
+12. **Scheduled update** (configurable):
     - Check `.last-update` timestamp
     - If time since last update exceeds `interval_hours` → Execute update
     - `interval_hours: 0` → Update on every startup
-12. **Update flow**:
+13. **Update flow**:
     - First update each Marketplace individually (`claude plugin marketplace update <name>`)
     - Reads all marketplaces from `~/.claude/plugins/known_marketplaces.json`
     - Then update each installed plugin individually (`claude plugin update <name>`)
     - **Re-register self after update** (`claude plugin update` rebuilds `installed_plugins.json`)
-13. **Git sync**:
+14. **Git sync**:
     - Generate new snapshot
     - Compare if plugin list has changed
     - Changed → Commit and push
     - Unchanged → Skip (only version numbers updated)
-14. **System notifications** (configurable):
+15. **System notifications** (configurable):
     - macOS: Uses `osascript`
     - Linux: Uses `notify-send`
     - Windows: Uses PowerShell Toast
