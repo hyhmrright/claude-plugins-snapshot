@@ -207,8 +207,12 @@ def check_missing_plugins() -> Tuple[Set[str], Dict[str, Any]]:
     installed = get_installed_plugins()
     state = load_install_state()
 
-    # 计算缺失的插件
-    missing = set(snapshot_plugins.keys()) - installed
+    # 计算缺失的插件（排除本地插件，它们通过 ensure_self_registered() 管理）
+    all_missing = set(snapshot_plugins.keys()) - installed
+    missing = {plugin for plugin in all_missing if "@" in plugin}
+    local_count = len(all_missing) - len(missing)
+    if local_count > 0:
+        log(f"Skipping {local_count} local plugin(s) (no @marketplace suffix)")
 
     # 过滤需要安装的插件
     to_install = set()

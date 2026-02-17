@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "timestamp": "2026-02-15T14:34:45.802567+00:00Z",
+  "timestamp": "2026-02-17T05:53:05.714057+00:00Z",
   "plugins": {
     "document-skills@anthropic-agent-skills": {
       "enabled": true,
@@ -64,12 +64,6 @@
       "scope": "user",
       "marketplace": "claude-plugins-official",
       "gitCommitSha": "2cd88e7947b7382e045666abee790c7f55f669f3"
-    },
-    "auto-manager": {
-      "enabled": true,
-      "version": "1.0.0",
-      "scope": "user",
-      "marketplace": "unknown"
     },
     "superpowers@superpowers-marketplace": {
       "enabled": true,

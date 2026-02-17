@@ -52,30 +52,40 @@ def create_snapshot() -> Path:
     # 提取插件信息
     enabled_plugins = settings.get("enabledPlugins", {})
     for plugin_name, enabled in enabled_plugins.items():
-        if plugin_name in installed.get("plugins", {}):
-            plugin_info_list = installed["plugins"][plugin_name]
-            if plugin_info_list:
-                plugin_info = plugin_info_list[0]  # 取第一个版本
-                # 解析 marketplace 名称
-                parts = plugin_name.split("@")
-                if len(parts) != 2 or not parts[0] or not parts[1]:
-                    log(f"Warning: Invalid plugin name format: {plugin_name}")
-                    marketplace = "unknown"
-                else:
-                    marketplace = parts[1]
+        # 跳过本地插件（本地插件不含 @marketplace 后缀）
+        if "@" not in plugin_name:
+            log(f"Skipping local plugin: {plugin_name}")
+            continue
 
-                snapshot["plugins"][plugin_name] = {
-                    "enabled": enabled,
-                    "version": plugin_info.get("version", "unknown"),
-                    "scope": plugin_info.get("scope", "user"),
-                    "marketplace": marketplace,
-                }
+        if plugin_name not in installed.get("plugins", {}):
+            continue
 
-                # 添加 Git commit SHA（如果存在）
-                if "gitCommitSha" in plugin_info:
-                    snapshot["plugins"][plugin_name]["gitCommitSha"] = plugin_info[
-                        "gitCommitSha"
-                    ]
+        plugin_info_list = installed["plugins"][plugin_name]
+        if not plugin_info_list:
+            continue
+
+        plugin_info = plugin_info_list[0]  # 取第一个版本
+
+        # 解析 marketplace 名称
+        parts = plugin_name.split("@")
+        if len(parts) != 2 or not parts[0] or not parts[1]:
+            log(f"Warning: Invalid plugin name format: {plugin_name}")
+            marketplace = "unknown"
+        else:
+            marketplace = parts[1]
+
+        snapshot["plugins"][plugin_name] = {
+            "enabled": enabled,
+            "version": plugin_info.get("version", "unknown"),
+            "scope": plugin_info.get("scope", "user"),
+            "marketplace": marketplace,
+        }
+
+        # 添加 Git commit SHA（如果存在）
+        if "gitCommitSha" in plugin_info:
+            snapshot["plugins"][plugin_name]["gitCommitSha"] = plugin_info[
+                "gitCommitSha"
+            ]
 
     # 提取市场源信息
     for name, config in marketplaces.items():
