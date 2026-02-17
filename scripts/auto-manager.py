@@ -445,42 +445,68 @@ def update_all_marketplaces() -> int:
     return success_count
 
 
+def _update_single_plugin(plugin_name: str) -> bool:
+    """更新单个插件，返回是否成功
+
+    如果使用完整名称（name@marketplace）更新失败且错误为 "not installed"，
+    会自动使用基础名称（name）重试。
+
+    参数:
+        plugin_name: 插件名称（格式: name@marketplace）
+    """
+    try:
+        log(f"Updating {plugin_name}...")
+        cmd = ["claude", "plugin", "update", plugin_name]
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=COMMAND_TIMEOUT_LONG, check=False
+        )
+
+        # 如果完整名称找不到，尝试使用基础名称重试
+        if result.returncode != 0 and "not installed" in result.stderr.lower():
+            base_name = plugin_name.split("@")[0]
+            log(f"Retrying with base name: {base_name}...")
+            cmd = ["claude", "plugin", "update", base_name]
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=COMMAND_TIMEOUT_LONG, check=False
+            )
+
+        if result.returncode == 0:
+            log(f"✓ Updated {plugin_name}")
+            return True
+
+        log(f"✗ Failed to update {plugin_name}: {result.stderr}")
+        return False
+    except subprocess.TimeoutExpired:
+        log(f"✗ Timeout updating {plugin_name}")
+        return False
+    except Exception as e:
+        log(f"✗ Error updating {plugin_name}: {e}")
+        return False
+
+
 def update_all_plugins() -> int:
-    """更新所有已安装的插件"""
+    """更新所有已安装的插件（跳过本地插件）"""
     installed = get_installed_plugins()
 
     if not installed:
         log("No plugins installed, skipping update")
         return 0
 
-    log(f"Updating {len(installed)} plugins...")
+    # 过滤掉本地插件（无 @ 标识的插件）
+    remote_plugins = [name for name in installed if "@" in name]
+    skipped = len(installed) - len(remote_plugins)
+    if skipped:
+        log(f"Skipping {skipped} local plugin(s)")
 
-    update_count = 0
-    fail_count = 0
+    if not remote_plugins:
+        log("No remote plugins to update")
+        return 0
 
-    for plugin_name in installed:
-        try:
-            log(f"Updating {plugin_name}...")
-            cmd = ["claude", "plugin", "update", plugin_name]
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=COMMAND_TIMEOUT_LONG, check=False
-            )
-
-            if result.returncode == 0:
-                log(f"✓ Updated {plugin_name}")
-                update_count += 1
-            else:
-                log(f"✗ Failed to update {plugin_name}: {result.stderr}")
-                fail_count += 1
-        except subprocess.TimeoutExpired:
-            log(f"✗ Timeout updating {plugin_name}")
-            fail_count += 1
-        except Exception as e:
-            log(f"✗ Error updating {plugin_name}: {e}")
-            fail_count += 1
-
-    log(f"Update completed: {update_count} updated, {fail_count} failed")
-    return update_count
+    log(f"Updating {len(remote_plugins)} plugin(s)...")
+    success_count = sum(1 for name in remote_plugins if _update_single_plugin(name))
+    fail_count = len(remote_plugins) - success_count
+    log(f"Update completed: {success_count} updated, {fail_count} failed")
+    return success_count
 
 
 def update_timestamp() -> None:

@@ -31,6 +31,7 @@ COMMAND_TIMEOUT_SHORT = _auto_manager.COMMAND_TIMEOUT_SHORT
 COMMAND_TIMEOUT_LONG = _auto_manager.COMMAND_TIMEOUT_LONG
 escape_for_applescript = _auto_manager.escape_for_applescript
 escape_for_powershell = _auto_manager.escape_for_powershell
+update_all_plugins = _auto_manager.update_all_plugins
 
 
 class TestRetryLogic:
@@ -601,6 +602,113 @@ class TestMarketplaceUpdate:
         assert "bad name with spaces" not in result
         assert "../traversal" not in result
         assert len(result) == 2
+
+
+class TestPluginUpdate:
+    """测试插件更新逻辑"""
+
+    @staticmethod
+    def _mock_installed(monkeypatch, plugins):
+        """模拟 get_installed_plugins 返回指定的插件列表"""
+        monkeypatch.setattr(_auto_manager, "get_installed_plugins", lambda: plugins)
+
+    @staticmethod
+    def _create_mock_result(returncode=0, stdout="", stderr=""):
+        """创建模拟的 subprocess 运行结果"""
+        class Result:
+            pass
+
+        result = Result()
+        result.returncode = returncode
+        result.stdout = stdout
+        result.stderr = stderr
+        return result
+
+    @staticmethod
+    def _mock_subprocess(monkeypatch, side_effect=None):
+        """模拟 subprocess.run，可自定义行为。返回记录调用的列表。"""
+        calls = []
+
+        def mock_run(cmd, **kwargs):
+            calls.append(cmd)
+            result = TestPluginUpdate._create_mock_result()
+            if side_effect:
+                side_effect(cmd, result)
+            return result
+
+        monkeypatch.setattr(_auto_manager.subprocess, "run", mock_run)
+        return calls
+
+    def test_skips_local_plugins(self, monkeypatch):
+        """测试跳过本地插件（无 @ 标识）"""
+        self._mock_installed(monkeypatch, ["auto-manager", "feat@marketplace"])
+        calls = self._mock_subprocess(monkeypatch)
+
+        assert update_all_plugins() == 1
+        assert len(calls) == 1
+        assert calls[0] == ["claude", "plugin", "update", "feat@marketplace"]
+
+    def test_fallback_to_base_name(self, monkeypatch):
+        """测试 'not installed' 错误时回退到基础名称"""
+        self._mock_installed(monkeypatch, ["feat@marketplace"])
+
+        def side_effect(cmd, result):
+            if cmd == ["claude", "plugin", "update", "feat@marketplace"]:
+                result.returncode = 1
+                result.stderr = "Plugin not installed"
+
+        calls = self._mock_subprocess(monkeypatch, side_effect)
+
+        assert update_all_plugins() == 1
+        assert ["claude", "plugin", "update", "feat@marketplace"] in calls
+        assert ["claude", "plugin", "update", "feat"] in calls
+
+    def test_no_fallback_on_other_errors(self, monkeypatch):
+        """测试非 'not installed' 错误不触发回退"""
+        self._mock_installed(monkeypatch, ["feat@marketplace"])
+
+        def side_effect(cmd, result):
+            result.returncode = 1
+            result.stderr = "Network timeout"
+
+        calls = self._mock_subprocess(monkeypatch, side_effect)
+
+        assert update_all_plugins() == 0
+        assert len(calls) == 1
+
+    def test_empty_installed(self, monkeypatch):
+        """测试没有已安装插件时返回 0"""
+        self._mock_installed(monkeypatch, [])
+        assert update_all_plugins() == 0
+
+    def test_only_local_plugins(self, monkeypatch):
+        """测试只有本地插件时返回 0"""
+        self._mock_installed(monkeypatch, ["auto-manager", "my-local-plugin"])
+        assert update_all_plugins() == 0
+
+    def test_timeout_handling(self, monkeypatch):
+        """测试超时处理"""
+        self._mock_installed(monkeypatch, ["feat@marketplace"])
+
+        def mock_run(cmd, **kwargs):
+            raise _auto_manager.subprocess.TimeoutExpired(cmd, COMMAND_TIMEOUT_LONG)
+
+        monkeypatch.setattr(_auto_manager.subprocess, "run", mock_run)
+
+        assert update_all_plugins() == 0
+
+    def test_multiple_plugins_partial_failure(self, monkeypatch):
+        """测试多个插件中部分失败"""
+        self._mock_installed(monkeypatch, ["a@mp", "b@mp", "c@mp"])
+
+        def side_effect(cmd, result):
+            if cmd[-1] == "b@mp":
+                result.returncode = 1
+                result.stderr = "error"
+
+        self._mock_subprocess(monkeypatch, side_effect)
+
+        assert update_all_plugins() == 2
 
 
 def test_constants_have_expected_values():
