@@ -15,11 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Per-marketplace updates: read `known_marketplaces.json` and update each marketplace individually with name validation (`_is_valid_marketplace_name()`)
 - Self-sync: `git pull --ff-only` on startup to fetch latest snapshot and config before any operations
 - Self-registration: auto-register in `installed_plugins.json` on startup to prevent Hook loss from plugin operations rebuilding the file
+- SessionStart Hook `matcher: "startup"`: only trigger on new sessions, not on resume/clear/compact (per official Claude Code docs)
 
 ### Fixed
 - Session detection environment variable: revert v1.1.0 change back to `CLAUDECODE` (confirmed this is the variable actually set by claude CLI; `CLAUDE_CODE_SESSION_ID` was incorrect)
 - Self-registration deadlock: call `ensure_self_registered()` after plugin install/update (not just on startup), because `claude plugin install/update` rebuilds `installed_plugins.json` and drops auto-manager registration
 - Skip local plugins (without `@marketplace` suffix) in snapshot generation and install, preventing auto-manager from being incorrectly included in `current.json` and causing perpetual install failures
+- Race condition: add 10-second startup delay in `session-start.sh` to wait for Claude Code initialization, fixing all plugin updates failing with "not installed" error
+- Plugin update retry logic: check both stdout and stderr for "not installed" error (claude CLI may output errors to either stream)
+- Global hook auto-upgrade: `ensure_global_hook()` now detects and upgrades old hooks missing `matcher` field
 
 ## [1.1.0] - 2026-02-14
 

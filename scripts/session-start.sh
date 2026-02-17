@@ -20,6 +20,8 @@ unset CLAUDECODE CLAUDE_CODE_SESSION_ID
 (
   echo "========================================" >> "$LOG_FILE" 2>&1
   echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] SessionStart triggered" >> "$LOG_FILE" 2>&1
+  # 等待 Claude Code 完成初始化（避免竞态条件导致 plugin update 失败）
+  sleep 10
   nohup python3 "$PLUGIN_ROOT/scripts/auto-manager.py" >> "$LOG_FILE" 2>&1
 ) &
 disown

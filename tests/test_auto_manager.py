@@ -252,6 +252,7 @@ class TestEnsureGlobalHook:
         data = json.loads(settings_local.read_text())
         hooks = data["hooks"]["SessionStart"]
         assert len(hooks) == 1
+        assert hooks[0]["matcher"] == "startup"
         assert hooks[0]["hooks"][0]["command"] == str(script_path)
 
     def test_adds_hook_to_empty_settings(self, tmp_path, monkeypatch):
@@ -263,10 +264,30 @@ class TestEnsureGlobalHook:
         data = json.loads(settings_local.read_text())
         assert "hooks" in data
         assert "SessionStart" in data["hooks"]
+        assert data["hooks"]["SessionStart"][0]["matcher"] == "startup"
         assert data["hooks"]["SessionStart"][0]["hooks"][0]["command"] == str(script_path)
 
-    def test_skips_if_hook_already_exists(self, tmp_path, monkeypatch, capsys):
-        """测试已有 Hook 时跳过"""
+    def test_skips_if_hook_already_exists_with_matcher(self, tmp_path, monkeypatch, capsys):
+        """测试已有带 matcher 的 Hook 时跳过"""
+        script_path = tmp_path / "scripts" / "session-start.sh"
+        existing = {
+            "hooks": {
+                "SessionStart": [
+                    {"matcher": "startup", "hooks": [{"type": "command", "command": str(script_path), "timeout": 30}]}
+                ]
+            }
+        }
+        settings_local, _ = self._setup(
+            tmp_path, monkeypatch, settings_content=json.dumps(existing)
+        )
+
+        ensure_global_hook()
+
+        assert "already configured" in capsys.readouterr().out
+        assert json.loads(settings_local.read_text()) == existing
+
+    def test_upgrades_hook_without_matcher(self, tmp_path, monkeypatch, capsys):
+        """测试升级缺少 matcher 的旧 Hook"""
         script_path = tmp_path / "scripts" / "session-start.sh"
         existing = {
             "hooks": {
@@ -281,8 +302,10 @@ class TestEnsureGlobalHook:
 
         ensure_global_hook()
 
-        assert "already configured" in capsys.readouterr().out
-        assert json.loads(settings_local.read_text()) == existing
+        output = capsys.readouterr().out
+        assert "Upgrading global hook" in output
+        data = json.loads(settings_local.read_text())
+        assert data["hooks"]["SessionStart"][0].get("matcher") == "startup"
 
     def test_preserves_existing_settings(self, tmp_path, monkeypatch):
         """测试保留已有配置"""

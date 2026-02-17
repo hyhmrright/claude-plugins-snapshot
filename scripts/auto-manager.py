@@ -462,7 +462,9 @@ def _update_single_plugin(plugin_name: str) -> bool:
         )
 
         # 如果完整名称找不到，尝试使用基础名称重试
-        if result.returncode != 0 and "not installed" in result.stderr.lower():
+        # 检查 stdout + stderr，因为 claude CLI 可能将错误输出到任一流
+        combined_output = (result.stdout + result.stderr).lower()
+        if result.returncode != 0 and "not installed" in combined_output:
             base_name = plugin_name.split("@")[0]
             log(f"Retrying with base name: {base_name}...")
             cmd = ["claude", "plugin", "update", base_name]
@@ -474,7 +476,8 @@ def _update_single_plugin(plugin_name: str) -> bool:
             log(f"✓ Updated {plugin_name}")
             return True
 
-        log(f"✗ Failed to update {plugin_name}: {result.stderr}")
+        error_msg = result.stderr.strip() or result.stdout.strip()
+        log(f"✗ Failed to update {plugin_name}: {error_msg}")
         return False
     except subprocess.TimeoutExpired:
         log(f"✗ Timeout updating {plugin_name}")
@@ -644,18 +647,14 @@ def ensure_self_registered() -> None:
         log(f"Error ensuring self-registration: {e}")
 
 
-def _has_session_start_hook(data: Dict[str, Any], command: str) -> bool:
-    """检查 settings.local.json 中是否已存在指定命令的 SessionStart Hook"""
-    for hook_group in data.get("hooks", {}).get("SessionStart", []):
-        for hook in hook_group.get("hooks", []):
-            if hook.get("command") == command:
-                return True
-    return False
-
-
 def _build_hook_entry(command: str) -> Dict[str, Any]:
-    """构建 SessionStart Hook 配置条目"""
+    """构建 SessionStart Hook 配置条目
+
+    使用 matcher: "startup" 限制只在新会话启动时触发，
+    避免在 resume/clear/compact 时重复运行。
+    """
     return {
+        "matcher": "startup",
         "hooks": [
             {
                 "type": "command",
@@ -672,18 +671,42 @@ def ensure_global_hook() -> None:
     将 Hook 从插件级别（hooks/hooks.json，依赖 installed_plugins.json）
     迁移到用户全局级别（~/.claude/settings.local.json），避免因
     installed_plugins.json 被重建导致 Hook 丢失的死循环问题。
+
+    同时升级已有的无 matcher Hook 为带 matcher: "startup" 的版本，
+    避免在 resume/clear/compact 时重复触发。
     """
     try:
         data = json.loads(GLOBAL_SETTINGS_LOCAL.read_text(encoding="utf-8")) if GLOBAL_SETTINGS_LOCAL.exists() else {}
 
         script_path = str(SESSION_START_SCRIPT)
-        if _has_session_start_hook(data, script_path):
+        session_start_hooks = data.get("hooks", {}).get("SessionStart", [])
+
+        # 查找已有的 Hook 条目
+        existing_idx = None
+        needs_upgrade = False
+        for i, hook_group in enumerate(session_start_hooks):
+            for hook in hook_group.get("hooks", []):
+                if hook.get("command") == script_path:
+                    existing_idx = i
+                    if "matcher" not in hook_group:
+                        needs_upgrade = True
+                    break
+            if existing_idx is not None:
+                break
+
+        if existing_idx is not None and not needs_upgrade:
             log("Global hook already configured in settings.local.json")
             return
 
-        data.setdefault("hooks", {}).setdefault("SessionStart", []).append(
-            _build_hook_entry(script_path)
-        )
+        if needs_upgrade:
+            # 替换旧条目为带 matcher 的新版本
+            session_start_hooks[existing_idx] = _build_hook_entry(script_path)
+            log("Upgrading global hook to add matcher: startup")
+        else:
+            # 新增条目
+            data.setdefault("hooks", {}).setdefault("SessionStart", []).append(
+                _build_hook_entry(script_path)
+            )
 
         # 原子写入
         GLOBAL_SETTINGS_LOCAL.parent.mkdir(parents=True, exist_ok=True)

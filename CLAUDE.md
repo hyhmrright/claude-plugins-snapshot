@@ -17,7 +17,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 1. **Hook 层** （双重保障）
    - **全局 Hook**（主要）：注册在 `~/.claude/settings.local.json`，不依赖 `installed_plugins.json`，始终触发
    - **插件 Hook**（备选）：`hooks/hooks.json`，依赖插件注册，作为向后兼容保留
-   - 两者均调用 `scripts/session-start.sh` 在后台执行（避免阻塞启动）
+   - 两者均使用 `matcher: "startup"` 限制只在新会话启动时触发（不在 resume/clear/compact 时触发）
+   - 两者均调用 `scripts/session-start.sh` 在后台执行（避免阻塞启动），延迟 10 秒等待 Claude Code 完成初始化
    - `scripts/session-start.py` 提供 Windows 备选入口（需在 `install.py` 中配置）
    - 超时设置：30秒
 
@@ -237,7 +238,8 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 ### SessionStart Hook 执行流程
 
 1. **触发时机**：每次启动 Claude Code 时
-2. **备份清理**：自动删除 Claude Code 生成的带时间戳的配置备份文件
+2. **启动延迟**：后台等待 10 秒，让 Claude Code 完成初始化（避免竞态条件导致 `claude plugin update` 因插件系统未就绪而失败）
+3. **备份清理**：自动删除 Claude Code 生成的带时间戳的配置备份文件
    - 删除 `~/.claude.json.backup.<timestamp>` 格式的文件
    - 保留 `~/.claude.json.backup`（主备份文件）
    - 目的：防止备份文件无限累积占用磁盘空间
