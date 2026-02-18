@@ -29,6 +29,7 @@ KEEP_LOG_SIZE_MB = _auto_manager.KEEP_LOG_SIZE_MB
 RETRY_INTERVAL_SECONDS = _auto_manager.RETRY_INTERVAL_SECONDS
 COMMAND_TIMEOUT_SHORT = _auto_manager.COMMAND_TIMEOUT_SHORT
 COMMAND_TIMEOUT_LONG = _auto_manager.COMMAND_TIMEOUT_LONG
+HOOK_TIMEOUT = _auto_manager.HOOK_TIMEOUT
 escape_for_applescript = _auto_manager.escape_for_applescript
 escape_for_powershell = _auto_manager.escape_for_powershell
 update_all_plugins = _auto_manager.update_all_plugins
@@ -267,8 +268,27 @@ class TestEnsureGlobalHook:
         assert data["hooks"]["SessionStart"][0]["matcher"] == "startup"
         assert data["hooks"]["SessionStart"][0]["hooks"][0]["command"] == str(script_path)
 
-    def test_skips_if_hook_already_exists_with_matcher(self, tmp_path, monkeypatch, capsys):
-        """测试已有带 matcher 的 Hook 时跳过"""
+    def test_skips_if_hook_already_exists_with_matcher_and_async(self, tmp_path, monkeypatch, capsys):
+        """测试已有带 matcher 和 async 的 Hook 时跳过"""
+        script_path = tmp_path / "scripts" / "session-start.sh"
+        existing = {
+            "hooks": {
+                "SessionStart": [
+                    {"matcher": "startup", "hooks": [{"type": "command", "command": str(script_path), "timeout": HOOK_TIMEOUT, "async": True}]}
+                ]
+            }
+        }
+        settings_local, _ = self._setup(
+            tmp_path, monkeypatch, settings_content=json.dumps(existing)
+        )
+
+        ensure_global_hook()
+
+        assert "already configured" in capsys.readouterr().out
+        assert json.loads(settings_local.read_text()) == existing
+
+    def test_upgrades_hook_without_async(self, tmp_path, monkeypatch, capsys):
+        """测试升级有 matcher 但缺少 async 的旧 Hook"""
         script_path = tmp_path / "scripts" / "session-start.sh"
         existing = {
             "hooks": {
@@ -283,8 +303,12 @@ class TestEnsureGlobalHook:
 
         ensure_global_hook()
 
-        assert "already configured" in capsys.readouterr().out
-        assert json.loads(settings_local.read_text()) == existing
+        output = capsys.readouterr().out
+        assert "Upgrading" in output
+        data = json.loads(settings_local.read_text())
+        hook = data["hooks"]["SessionStart"][0]["hooks"][0]
+        assert hook.get("async") is True
+        assert hook["timeout"] == HOOK_TIMEOUT
 
     def test_upgrades_hook_without_matcher(self, tmp_path, monkeypatch, capsys):
         """测试升级缺少 matcher 的旧 Hook"""
@@ -632,8 +656,8 @@ class TestPluginUpdate:
 
     @staticmethod
     def _mock_installed(monkeypatch, plugins):
-        """模拟 get_installed_plugins 返回指定的插件列表"""
-        monkeypatch.setattr(_auto_manager, "get_installed_plugins", lambda: plugins)
+        """模拟 get_installed_plugins 返回指定的插件集合"""
+        monkeypatch.setattr(_auto_manager, "get_installed_plugins", lambda: set(plugins))
 
     @staticmethod
     def _create_mock_result(returncode=0, stdout="", stderr=""):
@@ -744,6 +768,7 @@ def test_constants_have_expected_values():
     assert COMMAND_TIMEOUT_SHORT == 60
     assert COMMAND_TIMEOUT_LONG == 120
     assert COMMAND_TIMEOUT_SHORT < COMMAND_TIMEOUT_LONG
+    assert HOOK_TIMEOUT == 120
 
 
 if __name__ == "__main__":

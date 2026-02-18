@@ -45,6 +45,7 @@ MAX_RETRY_COUNT = 5
 # 超时时间（秒）
 COMMAND_TIMEOUT_SHORT = 60   # Git 操作、快照创建
 COMMAND_TIMEOUT_LONG = 120   # 插件安装/更新
+HOOK_TIMEOUT = 120           # SessionStart Hook 超时
 
 
 def log(message: str) -> None:
@@ -652,6 +653,8 @@ def _build_hook_entry(command: str) -> Dict[str, Any]:
 
     使用 matcher: "startup" 限制只在新会话启动时触发，
     避免在 resume/clear/compact 时重复运行。
+    使用 async: true 让 Claude Code 负责后台化执行，
+    不阻塞会话启动且避免 SIGHUP 导致子进程被杀死。
     """
     return {
         "matcher": "startup",
@@ -659,7 +662,8 @@ def _build_hook_entry(command: str) -> Dict[str, Any]:
             {
                 "type": "command",
                 "command": command,
-                "timeout": 30,
+                "timeout": HOOK_TIMEOUT,
+                "async": True,
             }
         ]
     }
@@ -672,8 +676,7 @@ def ensure_global_hook() -> None:
     迁移到用户全局级别（~/.claude/settings.local.json），避免因
     installed_plugins.json 被重建导致 Hook 丢失的死循环问题。
 
-    同时升级已有的无 matcher Hook 为带 matcher: "startup" 的版本，
-    避免在 resume/clear/compact 时重复触发。
+    同时升级已有的旧配置（缺少 matcher 或 async 字段）为最新版本。
     """
     try:
         data = json.loads(GLOBAL_SETTINGS_LOCAL.read_text(encoding="utf-8")) if GLOBAL_SETTINGS_LOCAL.exists() else {}
@@ -688,8 +691,9 @@ def ensure_global_hook() -> None:
             for hook in hook_group.get("hooks", []):
                 if hook.get("command") == script_path:
                     existing_idx = i
-                    if "matcher" not in hook_group:
-                        needs_upgrade = True
+                    has_matcher = "matcher" in hook_group
+                    has_async = hook.get("async") is True
+                    needs_upgrade = not has_matcher or not has_async
                     break
             if existing_idx is not None:
                 break
@@ -699,9 +703,8 @@ def ensure_global_hook() -> None:
             return
 
         if needs_upgrade:
-            # 替换旧条目为带 matcher 的新版本
             session_start_hooks[existing_idx] = _build_hook_entry(script_path)
-            log("Upgrading global hook to add matcher: startup")
+            log("Upgrading global hook (adding matcher/async)")
         else:
             # 新增条目
             data.setdefault("hooks", {}).setdefault("SessionStart", []).append(

@@ -174,13 +174,19 @@ def set_permissions(plugin_dir: Path) -> None:
                 script.chmod(0o744)
 
 
-def _has_session_start_hook(data: dict, command: str) -> bool:
-    """检查 settings 中是否已存在指定命令的 SessionStart Hook"""
-    for hook_group in data.get("hooks", {}).get("SessionStart", []):
-        for hook in hook_group.get("hooks", []):
-            if hook.get("command") == command:
-                return True
-    return False
+def _build_hook_entry(command: str) -> dict:
+    """构建 SessionStart Hook 配置条目"""
+    return {
+        "matcher": "startup",
+        "hooks": [
+            {
+                "type": "command",
+                "command": command,
+                "timeout": 120,
+                "async": True,
+            }
+        ]
+    }
 
 
 def setup_global_hook(plugin_dir: Path) -> bool:
@@ -192,20 +198,31 @@ def setup_global_hook(plugin_dir: Path) -> bool:
     try:
         data = json.loads(settings_local.read_text(encoding="utf-8")) if settings_local.exists() else {}
 
-        if _has_session_start_hook(data, script_path):
+        session_start_hooks = data.get("hooks", {}).get("SessionStart", [])
+        existing_idx = None
+        needs_upgrade = False
+        for i, hook_group in enumerate(session_start_hooks):
+            for hook in hook_group.get("hooks", []):
+                if hook.get("command") == script_path:
+                    existing_idx = i
+                    has_matcher = "matcher" in hook_group
+                    has_async = hook.get("async") is True
+                    needs_upgrade = not has_matcher or not has_async
+                    break
+            if existing_idx is not None:
+                break
+
+        if existing_idx is not None and not needs_upgrade:
             log_info("全局 Hook 已配置")
             return True
 
-        hook_entry = {
-            "hooks": [
-                {
-                    "type": "command",
-                    "command": script_path,
-                    "timeout": 30,
-                }
-            ]
-        }
-        data.setdefault("hooks", {}).setdefault("SessionStart", []).append(hook_entry)
+        if existing_idx is not None:
+            session_start_hooks[existing_idx] = _build_hook_entry(script_path)
+            log_info("升级全局 Hook 配置（添加 matcher/async）")
+        else:
+            data.setdefault("hooks", {}).setdefault("SessionStart", []).append(
+                _build_hook_entry(script_path)
+            )
 
         # 原子写入
         settings_local.parent.mkdir(parents=True, exist_ok=True)

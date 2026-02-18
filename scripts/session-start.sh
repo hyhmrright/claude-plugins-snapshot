@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # SessionStart Hook 入口脚本
-# 在后台执行 auto-manager.py，避免阻塞 Claude 启动
+# 由 Claude Code 的 async: true 配置负责后台化执行
 #
 
 set -euo pipefail
@@ -13,18 +13,14 @@ LOG_FILE="$PLUGIN_ROOT/logs/auto-manager.log"
 # 确保日志目录存在
 mkdir -p "$(dirname "$LOG_FILE")"
 
-# 清除嵌套会话检测环境变量，允许后台进程执行 claude 子命令
+# 清除嵌套会话检测环境变量，允许执行 claude 子命令
 unset CLAUDECODE CLAUDE_CODE_SESSION_ID
 
-# 在后台执行自动管理器，使用 nohup + disown 防止 SIGHUP 杀掉后台进程
-(
-  echo "========================================" >> "$LOG_FILE" 2>&1
-  echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] SessionStart triggered" >> "$LOG_FILE" 2>&1
-  # 等待 Claude Code 完成初始化（避免竞态条件导致 plugin update 失败）
-  sleep 10
-  nohup python3 "$PLUGIN_ROOT/scripts/auto-manager.py" >> "$LOG_FILE" 2>&1
-) &
-disown
+echo "========================================" >> "$LOG_FILE" 2>&1
+echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] SessionStart triggered" >> "$LOG_FILE" 2>&1
 
-# 立即返回，不阻塞会话启动
-exit 0
+# 等待 Claude Code 完成初始化（避免竞态条件导致 plugin update 失败）
+sleep 10
+
+# 直接同步执行（async: true 由 Claude Code hook 配置负责后台化）
+python3 "$PLUGIN_ROOT/scripts/auto-manager.py" >> "$LOG_FILE" 2>&1

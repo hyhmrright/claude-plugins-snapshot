@@ -18,9 +18,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - **全局 Hook**（主要）：注册在 `~/.claude/settings.local.json`，不依赖 `installed_plugins.json`，始终触发
    - **插件 Hook**（备选）：`hooks/hooks.json`，依赖插件注册，作为向后兼容保留
    - 两者均使用 `matcher: "startup"` 限制只在新会话启动时触发（不在 resume/clear/compact 时触发）
-   - 两者均调用 `scripts/session-start.sh` 在后台执行（避免阻塞启动），延迟 10 秒等待 Claude Code 完成初始化
+   - 两者均使用 `"async": true` 由 Claude Code 负责后台化执行，延迟 10 秒等待 Claude Code 完成初始化
    - `scripts/session-start.py` 提供 Windows 备选入口（需在 `install.py` 中配置）
-   - 超时设置：30秒
+   - 超时设置：120 秒
 
 2. **管理层** (`scripts/auto-manager.py`)
    - **主逻辑**：协调安装、更新、同步三大功能
@@ -60,6 +60,7 @@ MAX_RETRY_COUNT = 5            # 最大重试次数
 # 超时时间（秒）
 COMMAND_TIMEOUT_SHORT = 60     # Git 操作、快照创建
 COMMAND_TIMEOUT_LONG = 120     # 插件安装/更新
+HOOK_TIMEOUT = 120             # SessionStart Hook 超时
 ```
 
 **修改常量时注意**：需要同时更新代码中的引用和测试用例
@@ -238,7 +239,7 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 ### SessionStart Hook 执行流程
 
 1. **触发时机**：每次启动 Claude Code 时
-2. **启动延迟**：后台等待 10 秒，让 Claude Code 完成初始化（避免竞态条件导致 `claude plugin update` 因插件系统未就绪而失败）
+2. **启动延迟**：等待 10 秒让 Claude Code 完成初始化（`async: true` 由 Claude Code 负责后台化，避免竞态条件导致 `claude plugin update` 因插件系统未就绪而失败）
 3. **备份清理**：自动删除 Claude Code 生成的带时间戳的配置备份文件
    - 删除 `~/.claude.json.backup.<timestamp>` 格式的文件
    - 保留 `~/.claude.json.backup`（主备份文件）
@@ -255,7 +256,7 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 7. **会话检测**：检查 `CLAUDECODE` 环境变量
    - 如果在 Claude Code 会话中 → 跳过更新（避免嵌套会话错误）
    - 如果不在会话中 → 正常执行
-   - `session-start.sh` 在启动后台进程前会 unset 此变量
+   - `session-start.sh` 在执行前会 unset 此变量
 8. **安装缺失插件**：
    - 读取 `snapshots/current.json` 中的插件列表
    - 对比 `~/.claude/plugins/installed_plugins.json` 中的已安装列表
@@ -414,8 +415,8 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 
 ### 修改 Hook 配置时
 
-1. **避免阻塞**：SessionStart Hook 必须在后台执行（`&`）
-2. **超时设置**：Hook 超时应足够长（当前 30 秒），但不宜过长
+1. **使用 async 模式**：SessionStart Hook 必须设置 `"async": true`，由 Claude Code 负责后台化执行
+2. **超时设置**：Hook 超时应足够长（当前 120 秒），与 `HOOK_TIMEOUT` 常量保持一致
 3. **日志重定向**：所有输出重定向到 `logs/auto-manager.log`
 4. **不要改 Hook 入口为 `python3`**：Claude Code Hook 执行环境的 `PATH` 可能不包含 `python3`，必须使用 `.sh` 脚本直接执行（通过 shebang 调用 bash）
 
