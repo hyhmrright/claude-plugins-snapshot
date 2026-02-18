@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "timestamp": "2026-02-17T15:23:29.845998+00:00Z",
+  "timestamp": "2026-02-18T03:12:55.446184+00:00Z",
   "plugins": {
     "document-skills@anthropic-agent-skills": {
       "enabled": true,
@@ -18,14 +18,14 @@
     },
     "code-review@claude-plugins-official": {
       "enabled": true,
-      "version": "2cd88e7947b7",
+      "version": "261ce4fba4f2",
       "scope": "user",
       "marketplace": "claude-plugins-official",
       "gitCommitSha": "2cd88e7947b7382e045666abee790c7f55f669f3"
     },
     "feature-dev@claude-plugins-official": {
       "enabled": true,
-      "version": "2cd88e7947b7",
+      "version": "261ce4fba4f2",
       "scope": "user",
       "marketplace": "claude-plugins-official",
       "gitCommitSha": "2cd88e7947b7382e045666abee790c7f55f669f3"
@@ -39,7 +39,7 @@
     },
     "commit-commands@claude-plugins-official": {
       "enabled": true,
-      "version": "2cd88e7947b7",
+      "version": "261ce4fba4f2",
       "scope": "user",
       "marketplace": "claude-plugins-official",
       "gitCommitSha": "2cd88e7947b7382e045666abee790c7f55f669f3"
@@ -53,14 +53,14 @@
     },
     "github@claude-plugins-official": {
       "enabled": true,
-      "version": "2cd88e7947b7",
+      "version": "261ce4fba4f2",
       "scope": "user",
       "marketplace": "claude-plugins-official",
       "gitCommitSha": "2cd88e7947b7382e045666abee790c7f55f669f3"
     },
     "pr-review-toolkit@claude-plugins-official": {
       "enabled": true,
-      "version": "2cd88e7947b7",
+      "version": "261ce4fba4f2",
       "scope": "user",
       "marketplace": "claude-plugins-official",
       "gitCommitSha": "2cd88e7947b7382e045666abee790c7f55f669f3"
@@ -70,7 +70,7 @@
       "version": "4.3.0",
       "scope": "user",
       "marketplace": "superpowers-marketplace",
-      "gitCommitSha": "e16d611eee14ac4c3253b4bf4c55a98d905c2e64"
+      "gitCommitSha": "a0b9ecce2b25aa7d703138f17650540c2e8b2cde"
     },
     "claude-md-management@claude-plugins-official": {
       "enabled": true,
