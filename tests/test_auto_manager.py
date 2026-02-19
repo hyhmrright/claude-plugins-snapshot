@@ -308,7 +308,7 @@ class TestEnsureGlobalHook:
         data = json.loads(settings_local.read_text())
         hook = data["hooks"]["SessionStart"][0]["hooks"][0]
         assert hook.get("async") is True
-        assert hook["timeout"] == HOOK_TIMEOUT
+        assert hook["timeout"] == 30
 
     def test_upgrades_hook_without_matcher(self, tmp_path, monkeypatch, capsys):
         """测试升级缺少 matcher 的旧 Hook"""
@@ -330,6 +330,35 @@ class TestEnsureGlobalHook:
         assert "Upgrading global hook" in output
         data = json.loads(settings_local.read_text())
         assert data["hooks"]["SessionStart"][0].get("matcher") == "startup"
+
+    def test_upgrade_preserves_sibling_hooks_in_same_group(self, tmp_path, monkeypatch):
+        """测试升级时保留同组中其他 Hook 条目"""
+        script_path = tmp_path / "scripts" / "session-start.sh"
+        existing = {
+            "hooks": {
+                "SessionStart": [
+                    {
+                        "hooks": [
+                            {"type": "command", "command": str(script_path), "timeout": 30},
+                            {"type": "command", "command": "echo sibling", "timeout": 10, "async": True},
+                        ]
+                    }
+                ]
+            }
+        }
+        settings_local, _ = self._setup(
+            tmp_path, monkeypatch, settings_content=json.dumps(existing)
+        )
+
+        ensure_global_hook()
+
+        data = json.loads(settings_local.read_text())
+        group = data["hooks"]["SessionStart"][0]
+        assert group.get("matcher") == "startup"
+        assert len(group["hooks"]) == 2
+        assert group["hooks"][0]["command"] == str(script_path)
+        assert group["hooks"][0].get("async") is True
+        assert group["hooks"][1]["command"] == "echo sibling"
 
     def test_preserves_existing_settings(self, tmp_path, monkeypatch):
         """测试保留已有配置"""

@@ -686,11 +686,13 @@ def ensure_global_hook() -> None:
 
         # 查找已有的 Hook 条目
         existing_idx = None
+        existing_hook_idx = None
         needs_upgrade = False
         for i, hook_group in enumerate(session_start_hooks):
-            for hook in hook_group.get("hooks", []):
+            for j, hook in enumerate(hook_group.get("hooks", [])):
                 if hook.get("command") == script_path:
                     existing_idx = i
+                    existing_hook_idx = j
                     has_matcher = "matcher" in hook_group
                     has_async = hook.get("async") is True
                     needs_upgrade = not has_matcher or not has_async
@@ -703,7 +705,13 @@ def ensure_global_hook() -> None:
             return
 
         if needs_upgrade:
-            session_start_hooks[existing_idx] = _build_hook_entry(script_path)
+            hook_group = session_start_hooks[existing_idx]
+            if "matcher" not in hook_group:
+                hook_group["matcher"] = "startup"
+
+            hook_entry = hook_group.get("hooks", [])[existing_hook_idx]
+            if hook_entry.get("async") is not True:
+                hook_entry["async"] = True
             log("Upgrading global hook (adding matcher/async)")
         else:
             # 新增条目

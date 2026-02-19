@@ -200,11 +200,13 @@ def setup_global_hook(plugin_dir: Path) -> bool:
 
         session_start_hooks = data.get("hooks", {}).get("SessionStart", [])
         existing_idx = None
+        existing_hook_idx = None
         needs_upgrade = False
         for i, hook_group in enumerate(session_start_hooks):
-            for hook in hook_group.get("hooks", []):
+            for j, hook in enumerate(hook_group.get("hooks", [])):
                 if hook.get("command") == script_path:
                     existing_idx = i
+                    existing_hook_idx = j
                     has_matcher = "matcher" in hook_group
                     has_async = hook.get("async") is True
                     needs_upgrade = not has_matcher or not has_async
@@ -217,7 +219,13 @@ def setup_global_hook(plugin_dir: Path) -> bool:
             return True
 
         if existing_idx is not None:
-            session_start_hooks[existing_idx] = _build_hook_entry(script_path)
+            hook_group = session_start_hooks[existing_idx]
+            if "matcher" not in hook_group:
+                hook_group["matcher"] = "startup"
+
+            hook_entry = hook_group.get("hooks", [])[existing_hook_idx]
+            if hook_entry.get("async") is not True:
+                hook_entry["async"] = True
             log_info("升级全局 Hook 配置（添加 matcher/async）")
         else:
             data.setdefault("hooks", {}).setdefault("SessionStart", []).append(
