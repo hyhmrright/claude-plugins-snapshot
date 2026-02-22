@@ -379,7 +379,7 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 
 ### 修改快照格式时
 
-1. **保持版本号**：`version: "1.0"` 用于未来兼容性检查
+1. **版本号自增**：`version` 格式为 `"1.x"`，每次插件或市场有增删时 minor 版本自增（如 `1.0` → `1.1` → `1.2`）；`timestamp` 同步更新；其他情况（如仅版本更新）不触碰文件
 2. **向后兼容**：新增字段使用可选字段（带默认值）
 3. **Git 友好**：保持 JSON 格式一致（缩进 2 空格）
 
