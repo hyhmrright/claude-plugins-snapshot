@@ -556,20 +556,32 @@ def update_timestamp() -> None:
     log(f"Updated timestamp: {timestamp}")
 
 
+def get_local_marketplaces() -> Set[str]:
+    """获取本地已知 marketplace 名称集合"""
+    if not KNOWN_MARKETPLACES_FILE.exists():
+        return set()
+    try:
+        data = json.loads(KNOWN_MARKETPLACES_FILE.read_text())
+        return set(data.keys())
+    except Exception:
+        return set()
+
+
 def snapshot_has_changes() -> bool:
-    """检查快照是否有实质性变化（插件列表变化）"""
+    """检查快照是否有实质性变化（插件列表或 marketplace 列表变化）"""
     if not CURRENT_SNAPSHOT.exists():
         return True  # 没有快照，肯定有变化
 
     try:
-        # 读取当前快照
         old_snapshot = json.loads(CURRENT_SNAPSHOT.read_text())
         old_plugins = set(old_snapshot.get("plugins", {}).keys())
+        old_marketplaces = set(old_snapshot.get("marketplaces", {}).keys())
 
-        # 获取当前已安装插件
         current_plugins = get_installed_plugins()
+        current_marketplaces = get_local_marketplaces()
 
-        # 比较插件列表
+        changed = False
+
         if old_plugins != current_plugins:
             added = current_plugins - old_plugins
             removed = old_plugins - current_plugins
@@ -577,10 +589,20 @@ def snapshot_has_changes() -> bool:
                 log(f"New plugins detected: {', '.join(added)}")
             if removed:
                 log(f"Removed plugins detected: {', '.join(removed)}")
-            return True
+            changed = True
 
-        log("Plugin list unchanged, no need to sync to Git")
-        return False
+        if old_marketplaces != current_marketplaces:
+            added = current_marketplaces - old_marketplaces
+            removed = old_marketplaces - current_marketplaces
+            if added:
+                log(f"New marketplaces detected: {', '.join(added)}")
+            if removed:
+                log(f"Removed marketplaces detected: {', '.join(removed)}")
+            changed = True
+
+        if not changed:
+            log("Plugin list and marketplace list unchanged, no need to sync to Git")
+        return changed
     except Exception as e:
         log(f"Error checking snapshot changes: {e}")
         return True  # 出错时保守处理，认为有变化
@@ -790,6 +812,69 @@ def sync_to_git(config: Dict[str, Any]) -> bool:
     except Exception as e:
         log(f"✗ Error syncing to Git: {e}")
         return False
+
+
+def sync_marketplaces_from_snapshot() -> int:
+    """将快照中缺失的 marketplace 同步到本地 known_marketplaces.json
+
+    只添加缺失的 marketplace，不删除现有的。
+    返回新添加的 marketplace 数量。
+    """
+    if not CURRENT_SNAPSHOT.exists():
+        return 0
+
+    try:
+        snapshot = json.loads(CURRENT_SNAPSHOT.read_text())
+        snapshot_marketplaces = snapshot.get("marketplaces", {})
+
+        if not snapshot_marketplaces:
+            return 0
+
+        local_data: Dict[str, Any] = {}
+        if KNOWN_MARKETPLACES_FILE.exists():
+            local_data = json.loads(KNOWN_MARKETPLACES_FILE.read_text())
+
+        missing = {
+            name: info
+            for name, info in snapshot_marketplaces.items()
+            if name not in local_data
+        }
+
+        if not missing:
+            log("All snapshot marketplaces are registered locally")
+            return 0
+
+        log(f"Found {len(missing)} new marketplace(s) from snapshot: {', '.join(missing.keys())}")
+
+        for name, info in missing.items():
+            # 重构 known_marketplaces.json 格式（source 字段为嵌套 dict）
+            local_data[name] = {
+                "source": {
+                    "source": info.get("source", "github"),
+                    "repo": info.get("repo", ""),
+                },
+                "autoUpdate": True,
+            }
+            log(f"Adding marketplace: {name} ({info.get('repo', 'unknown')})")
+
+        # 原子写入
+        KNOWN_MARKETPLACES_FILE.parent.mkdir(parents=True, exist_ok=True)
+        temp_file = KNOWN_MARKETPLACES_FILE.with_suffix(".json.tmp")
+        temp_file.write_text(json.dumps(local_data, indent=2) + "\n")
+        temp_file.rename(KNOWN_MARKETPLACES_FILE)
+        log(f"✓ Added {len(missing)} marketplace(s) to known_marketplaces.json")
+
+        # 立即 fetch 新 marketplace 的插件列表（不在 Claude 会话中执行，避免嵌套错误）
+        if not is_in_claude_session():
+            for name in missing:
+                _update_single_marketplace(name)
+        else:
+            log("Skipping marketplace fetch (running inside Claude session)")
+
+        return len(missing)
+    except Exception as e:
+        log(f"Error syncing marketplaces from snapshot: {e}")
+        return 0
 
 
 def sync_global_rules(config: Dict[str, Any]) -> None:
@@ -1013,6 +1098,9 @@ def main() -> None:
 
     # 加载配置（在 git pull 之后，确保使用最新配置）
     config = load_config()
+
+    # 0.5. 将快照中的 marketplace 同步到本地（来自其他平台新增的 marketplace）
+    sync_marketplaces_from_snapshot()
 
     # 检查安装前的插件列表变化
     plugins_changed = False

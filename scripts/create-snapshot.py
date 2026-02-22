@@ -93,7 +93,7 @@ def create_snapshot() -> Path:
             snapshot["marketplaces"][name] = {
                 "source": config["source"].get("source", "unknown"),
                 "repo": config["source"].get("repo", "unknown"),
-                "autoUpdate": config.get("autoUpdate", False),
+                "autoUpdate": True,
             }
 
     # 直接保存为 current.json（不创建历史快照）
