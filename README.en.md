@@ -89,25 +89,27 @@ The current machine is already set up, and snapshots are synced to GitHub.
 #### SessionStart Hook (On Session Start)
 
 **Every time Claude starts**:
-1. **Self-registration Check**: Ensure auto-manager is registered in `installed_plugins.json` (prevents plugin-level Hook loss)
-2. **Global Hook Check**: Ensure Hook is registered in `~/.claude/settings.local.json` (independent of `installed_plugins.json`)
-3. **Self-sync**: `git pull` to fetch latest snapshot and config
-4. **Install Missing Plugins**: Compare snapshot with current installation, auto-install missing plugins
+1. **Backup Cleanup**: Auto-delete Claude Code's temporary `~/.claude.json.backup.<timestamp>` backup files
+2. **Self-registration Check**: Ensure auto-manager is registered in `installed_plugins.json` (prevents plugin-level Hook loss)
+3. **Global Hook Check**: Ensure Hook is registered in `~/.claude/settings.local.json`, and auto-correct `matcher`/`async`/`timeout` fields
+4. **Self-sync**: `git pull` to fetch latest snapshot and config (before loading config, ensuring latest remote version is used)
+5. **Marketplace Sync**: Sync marketplaces from snapshot to local `known_marketplaces.json` (supports cross-machine new marketplace propagation)
+6. **Install Missing Plugins**: Compare snapshot with current installation, auto-install missing plugins
    - **Smart Retry**: Auto-retry after 10 minutes on failure, up to 5 attempts
    - **State Tracking**: Track installation status and retry count for each plugin
-5. **Global Rules Sync**: Auto-sync `global-rules/CLAUDE.md` to `~/.claude/CLAUDE.md`
-6. **Global Skills Sync**: Auto-sync `global-skills/` directory to `~/.claude/skills/`
-7. **Auto Update** (configurable):
+7. **Global Rules Sync**: Auto-sync `global-rules/CLAUDE.md` to `~/.claude/CLAUDE.md`
+8. **Global Skills Sync**: Auto-sync `global-skills/` directory to `~/.claude/skills/`
+9. **Auto Update** (configurable):
    - **Default behavior** (`interval_hours: 0`): Update Marketplaces and all plugins on every startup, ensuring everything is always up-to-date
    - **Scheduled update** (`interval_hours: 24`): Update Marketplaces and plugins every 24 hours
    - **Update order**: Update each Marketplace individually (from `known_marketplaces.json`), then update each plugin
    - **Session detection**: Automatically skip updates when running inside a Claude Code session (avoid nested session errors)
-8. **Smart Sync**:
-   - ✅ **Plugin list changes** (install/uninstall) → Generate snapshot and push to Git
-   - ❌ **Version-only updates** (auto-update) → Don't push, avoid meaningless commits
-9. **Log Management**:
-   - Auto-rotation, max 10MB retention
-   - Keep the most recent 8MB when size is exceeded
+10. **Smart Sync**:
+    - ✅ **Plugin list changes** (install/uninstall) → Generate snapshot and push to Git
+    - ❌ **Version-only updates** (auto-update) → Don't push, avoid meaningless commits
+11. **Log Management**:
+    - Auto-rotation, max 10MB retention
+    - Keep the most recent 8MB when size is exceeded
 
 ### Git Sync Strategy
 
@@ -137,7 +139,7 @@ auto-manager/
 ├── hooks/
 │   └── hooks.json           # SessionStart Hook configuration (plugin-level, fallback)
 ├── scripts/
-│   ├── session-start.sh     # Hook entry point (background execution, nohup + disown)
+│   ├── session-start.sh     # Hook entry point (async:true, Claude Code handles backgrounding)
 │   ├── session-start.py     # Hook entry point fallback (Windows)
 │   ├── auto-manager.py      # Main logic (install + update)
 │   ├── create-snapshot.py   # Generate plugin snapshot
@@ -333,7 +335,7 @@ python3 ~/.claude/plugins/auto-manager/scripts/sync-snapshot.py
 # On next Claude startup:
 # 1. Auto-pull latest snapshot from Git (via git pull)
 # 2. Auto-install new plugins
-# 3. Auto-update all plugins (if more than 24 hours since last update)
+# 3. Auto-update all plugins (based on config, default: every startup)
 ```
 
 **Notes**:
@@ -540,14 +542,15 @@ git pull
 ## 📝 Version History
 
 - **Unreleased**
-  - Global Hook: migrated to `~/.claude/settings.local.json`, no longer depends on `installed_plugins.json`
+  - Global Hook: migrated to `~/.claude/settings.local.json`, no longer depends on `installed_plugins.json`; auto-corrects old hook `matcher`/`async`/`timeout` fields on startup
+  - Hook execution: `async: true` with Claude Code handling backgrounding, 120-second timeout
   - Hook matcher: use `matcher: "startup"` to only trigger on new session start
   - Startup delay: 10-second wait for Claude Code initialization, fixing race condition
-  - SIGHUP protection: use `nohup` + `disown` to prevent background process termination
   - Plugin update: skip local plugins, support base name fallback
   - Global rules sync, global skills sync
   - Self-sync, self-registration mechanism
   - Skip local plugins (without `@marketplace` suffix) in snapshot and install
+  - Backup cleanup: auto-delete Claude Code's temporary backup files
 - **1.1.0** (2026-02-14)
   - Security fixes: session detection, notification escaping, Git whitelist
   - Configuration constants, input validation, type hints

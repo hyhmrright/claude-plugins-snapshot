@@ -89,23 +89,25 @@ python install.py
 #### SessionStart Hook（会话启动时）
 
 **每次启动 Claude 时**：
-1. **自注册检查**：确保 auto-manager 在 `installed_plugins.json` 中注册（防止插件级 Hook 丢失）
-2. **全局 Hook 检查**：确保 Hook 在 `~/.claude/settings.local.json` 中注册（不依赖 `installed_plugins.json`）
-3. **仓库自同步**：`git pull` 拉取最新快照和配置
-4. **安装缺失插件**：对比快照和当前安装，自动安装缺失的插件
+1. **备份清理**：自动删除 Claude Code 生成的 `~/.claude.json.backup.<timestamp>` 临时备份文件
+2. **自注册检查**：确保 auto-manager 在 `installed_plugins.json` 中注册（防止插件级 Hook 丢失）
+3. **全局 Hook 检查**：确保 Hook 在 `~/.claude/settings.local.json` 中注册，并自动修正 `matcher`/`async`/`timeout` 字段
+4. **仓库自同步**：`git pull` 拉取最新快照和配置（在加载配置前执行，确保使用远程最新版本）
+5. **Marketplace 同步**：将快照中的 marketplace 同步到本地 `known_marketplaces.json`（支持跨机器新增 marketplace）
+6. **安装缺失插件**：对比快照和当前安装，自动安装缺失的插件
    - **智能重试**：安装失败后 10 分钟自动重试，最多 5 次
    - **状态记录**：跟踪每个插件的安装状态和重试次数
-5. **全局规则同步**：自动同步 `global-rules/CLAUDE.md` 到 `~/.claude/CLAUDE.md`
-6. **全局 Skills 同步**：自动同步 `global-skills/` 目录到 `~/.claude/skills/`
-7. **自动更新**（可配置）：
+7. **全局规则同步**：自动同步 `global-rules/CLAUDE.md` 到 `~/.claude/CLAUDE.md`
+8. **全局 Skills 同步**：自动同步 `global-skills/` 目录到 `~/.claude/skills/`
+9. **自动更新**（可配置）：
    - **默认行为**（`interval_hours: 0`）：每次启动都更新 Marketplaces 和所有插件，确保始终最新
    - **定时更新**（`interval_hours: 24`）：每 24 小时更新一次 Marketplaces 和插件
    - **更新顺序**：先逐个更新 Marketplaces（从 `known_marketplaces.json` 读取），再逐个更新插件
    - **会话检测**：在 Claude Code 会话中自动跳过更新（避免嵌套会话错误）
-8. **智能同步**：
-   - ✅ **插件列表变化**（安装/卸载）→ 生成快照并推送到 Git
-   - ❌ **只是版本更新**（自动更新）→ 不推送，避免无意义的 commit
-9. **日志管理**：
+10. **智能同步**：
+    - ✅ **插件列表变化**（安装/卸载）→ 生成快照并推送到 Git
+    - ❌ **只是版本更新**（自动更新）→ 不推送，避免无意义的 commit
+11. **日志管理**：
    - 自动轮转，最多保留 10MB
    - 超出时保留最近 8MB 内容
 
@@ -137,7 +139,7 @@ auto-manager/
 ├── hooks/
 │   └── hooks.json           # SessionStart Hook 配置（插件级，备选）
 ├── scripts/
-│   ├── session-start.sh     # Hook 入口（后台执行，nohup + disown）
+│   ├── session-start.sh     # Hook 入口（async:true 由 Claude Code 负责后台化）
 │   ├── session-start.py     # Hook 入口备选（Windows）
 │   ├── auto-manager.py      # 主逻辑（安装 + 更新）
 │   ├── create-snapshot.py   # 生成插件快照
@@ -333,7 +335,7 @@ python3 ~/.claude/plugins/auto-manager/scripts/sync-snapshot.py
 # 下次启动 Claude 时：
 # 1. 自动从 Git 拉取最新快照（通过 git pull）
 # 2. 自动安装新插件
-# 3. 自动更新所有插件（如果距离上次更新超过 24 小时）
+# 3. 自动更新所有插件（根据配置，默认：每次启动更新）
 ```
 
 **注意**：
@@ -540,14 +542,15 @@ git pull
 ## 📝 版本历史
 
 - **Unreleased**
-  - 全局 Hook：迁移至 `~/.claude/settings.local.json`，不再依赖 `installed_plugins.json`
+  - 全局 Hook：迁移至 `~/.claude/settings.local.json`，不再依赖 `installed_plugins.json`；启动时自动修正旧 hook 的 `matcher`/`async`/`timeout` 字段
+  - Hook 执行方式：`async: true` 由 Claude Code 负责后台化，超时 120 秒
   - Hook matcher：使用 `matcher: "startup"` 限制只在新会话启动时触发
   - 启动延迟：10 秒等待 Claude Code 初始化，修复竞态条件
-  - SIGHUP 防护：使用 `nohup` + `disown` 防止后台进程被终止
   - 插件更新：跳过本地插件、支持基础名称回退
   - 全局规则同步、全局 Skills 同步
   - 仓库自同步、自注册机制
   - 跳过本地插件（无 `@marketplace` 后缀）的快照和安装
+  - 备份清理：自动删除 Claude Code 生成的临时备份文件
 - **1.1.0** (2026-02-14)
   - 安全修复：会话检测、通知消息转义、Git 白名单
   - 常量化配置、输入验证、类型提示
