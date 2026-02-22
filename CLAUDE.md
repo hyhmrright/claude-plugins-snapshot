@@ -394,3 +394,21 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
    - 从 Git 拉取最新快照（如果启用了 auto_pull）
    - 检测并安装缺失的插件
    - 根据配置决定是否更新插件
+
+## 开发注意事项
+
+### snapshots/current.json 是受保护文件
+- **不能直接编辑**：`.claude/hooks/protect-generated-files.sh` 会拦截
+- 必须运行 `python3 scripts/create-snapshot.py` 重新生成
+- 该脚本写入**部署目录** `~/.claude/plugins/auto-manager/snapshots/current.json`，不是开发目录
+- 生成后需手动同步：`cp ~/.claude/plugins/auto-manager/snapshots/current.json snapshots/current.json`
+
+### 预先存在的测试失败（非 bug）
+- `TestPluginUpdate::test_skips_local_plugins` 和 `test_no_fallback_on_other_errors` 已知失败
+- 原因：`is_plugin_management_available()` 会额外调用 `claude plugin list`，测试计数过期
+- 运行测试时预期 60/62 通过
+
+### 开发目录 vs 部署目录
+- 开发：`~/code/claude-plugins-snapshot/`（git 工作区）
+- 部署：`~/.claude/plugins/auto-manager/`（Claude Code 实际运行）
+- push 后需手动在部署目录执行 `git pull` 生效（或等下次 Claude Code 启动自动 pull）
