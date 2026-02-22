@@ -7,7 +7,7 @@
           {
             "type": "command",
             "command": "python3 $CLAUDE_PROJECT_DIR/scripts/startup-service.py --check-and-install",
-            "timeout": 60,
+            "timeout": 120,
             "async": true
           }
         ]
