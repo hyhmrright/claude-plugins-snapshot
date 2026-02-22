@@ -644,9 +644,9 @@ def sync_self_repo() -> bool:
     失败不影响后续流程。
     """
     try:
-        log("Syncing auto-manager repo (git pull)...")
+        log("Syncing auto-manager repo (git pull --rebase)...")
         result = subprocess.run(
-            ["git", "pull", "--ff-only"],
+            ["git", "pull", "--rebase", "origin", "main"],
             capture_output=True,
             text=True,
             timeout=COMMAND_TIMEOUT_SHORT,
@@ -656,7 +656,7 @@ def sync_self_repo() -> bool:
 
         if result.returncode == 0:
             output = result.stdout.strip()
-            if "Already up to date" in output:
+            if "Already up to date" in output or "is up to date" in output:
                 log("✓ Auto-manager repo already up to date")
             else:
                 first_line = output.split("\n")[0]
