@@ -260,10 +260,10 @@ def install_startup_service(plugin_dir: Path) -> None:
 
     try:
         spec = importlib.util.spec_from_file_location("startup_service", str(startup_script))
-        m = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(m)
+        startup_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(startup_module)
 
-        plat = m.get_platform()
+        plat = startup_module.get_platform()
         if plat == "devcontainer":
             log_warn("DevContainer 环境，跳过 OS 服务安装（使用 Claude Code Hook）")
             return
@@ -271,7 +271,7 @@ def install_startup_service(plugin_dir: Path) -> None:
             log_warn("Windows 暂不支持 OS 启动服务，保持现有 Claude Code Hook 机制")
             return
 
-        result = m.install_service(plugin_dir)
+        result = startup_module.install_service(plugin_dir)
         if result:
             log_info("OS 启动服务已配置（登录时自动运行）")
         else:

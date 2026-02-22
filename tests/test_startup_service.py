@@ -3,11 +3,10 @@
 Unit tests for startup-service.py
 """
 import importlib.util
-import os
 import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -42,6 +41,29 @@ LAUNCHD_LABEL = _startup_service.LAUNCHD_LABEL
 SERVICE_NAME = _startup_service.SERVICE_NAME
 
 
+# DevContainer 相关环境变量名列表
+_DEVCONTAINER_ENV_VARS = ("REMOTE_CONTAINERS", "CODESPACES", "DEVCONTAINER", "KUBERNETES_SERVICE_HOST")
+
+
+def _clear_devcontainer_env(monkeypatch):
+    """清除所有 DevContainer 相关环境变量"""
+    for var in _DEVCONTAINER_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+
+
+def _mock_dockerenv_exists(monkeypatch, exists: bool):
+    """模拟 /.dockerenv 文件是否存在"""
+    original_path = _startup_service.Path
+
+    class MockPath(original_path):
+        def exists(self):
+            if str(self) == "/.dockerenv":
+                return exists
+            return super().exists()
+
+    monkeypatch.setattr(_startup_service, "Path", MockPath)
+
+
 # ============================================================
 # TestDevContainerDetection
 # ============================================================
@@ -50,67 +72,33 @@ class TestDevContainerDetection:
     """测试 DevContainer 环境检测"""
 
     def test_detects_dockerenv_file(self, monkeypatch):
-        """/.dockerenv 文件存在时应检测为 DevContainer（通过 os.path.exists 模拟）"""
-        monkeypatch.delenv("REMOTE_CONTAINERS", raising=False)
-        monkeypatch.delenv("CODESPACES", raising=False)
-        monkeypatch.delenv("DEVCONTAINER", raising=False)
-        monkeypatch.delenv("KUBERNETES_SERVICE_HOST", raising=False)
-        # 通过 monkeypatch 替换模块中的 Path 类使 /.dockerenv 存在检测返回 True
-        original_path = _startup_service.Path
-
-        class MockPath(original_path):
-            def exists(self):
-                if str(self) == "/.dockerenv":
-                    return True
-                return super().exists()
-
-        monkeypatch.setattr(_startup_service, "Path", MockPath)
+        """/.dockerenv 文件存在时应检测为 DevContainer"""
+        _clear_devcontainer_env(monkeypatch)
+        _mock_dockerenv_exists(monkeypatch, exists=True)
         assert is_devcontainer() is True
 
     def test_detects_remote_containers_env(self, monkeypatch):
         """REMOTE_CONTAINERS 环境变量存在时应检测为 DevContainer"""
-        monkeypatch.delenv("REMOTE_CONTAINERS", raising=False)
-        monkeypatch.delenv("CODESPACES", raising=False)
-        monkeypatch.delenv("DEVCONTAINER", raising=False)
-        monkeypatch.delenv("KUBERNETES_SERVICE_HOST", raising=False)
+        _clear_devcontainer_env(monkeypatch)
         monkeypatch.setenv("REMOTE_CONTAINERS", "true")
         assert is_devcontainer() is True
 
     def test_detects_codespaces_env(self, monkeypatch):
         """CODESPACES 环境变量存在时应检测为 DevContainer"""
-        monkeypatch.delenv("REMOTE_CONTAINERS", raising=False)
-        monkeypatch.delenv("CODESPACES", raising=False)
-        monkeypatch.delenv("DEVCONTAINER", raising=False)
-        monkeypatch.delenv("KUBERNETES_SERVICE_HOST", raising=False)
+        _clear_devcontainer_env(monkeypatch)
         monkeypatch.setenv("CODESPACES", "true")
         assert is_devcontainer() is True
 
     def test_detects_devcontainer_env(self, monkeypatch):
         """DEVCONTAINER 环境变量存在时应检测为 DevContainer"""
-        monkeypatch.delenv("REMOTE_CONTAINERS", raising=False)
-        monkeypatch.delenv("CODESPACES", raising=False)
-        monkeypatch.delenv("DEVCONTAINER", raising=False)
-        monkeypatch.delenv("KUBERNETES_SERVICE_HOST", raising=False)
+        _clear_devcontainer_env(monkeypatch)
         monkeypatch.setenv("DEVCONTAINER", "1")
         assert is_devcontainer() is True
 
     def test_normal_env_returns_false(self, monkeypatch):
         """正常环境（无相关环境变量且无 /.dockerenv）应返回 False"""
-        monkeypatch.delenv("REMOTE_CONTAINERS", raising=False)
-        monkeypatch.delenv("CODESPACES", raising=False)
-        monkeypatch.delenv("DEVCONTAINER", raising=False)
-        monkeypatch.delenv("KUBERNETES_SERVICE_HOST", raising=False)
-
-        # 确保 /.dockerenv 检测返回 False
-        original_path = _startup_service.Path
-
-        class MockPath(original_path):
-            def exists(self):
-                if str(self) == "/.dockerenv":
-                    return False
-                return super().exists()
-
-        monkeypatch.setattr(_startup_service, "Path", MockPath)
+        _clear_devcontainer_env(monkeypatch)
+        _mock_dockerenv_exists(monkeypatch, exists=False)
         assert is_devcontainer() is False
 
 

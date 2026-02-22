@@ -12,7 +12,6 @@ OS 级启动服务管理器
 - DevContainer:   跳过（继续使用 Claude Code SessionStart Hook）
 - Windows:        暂不支持，保持现有 Claude Code Hook 机制
 """
-import importlib.util
 import os
 import platform
 import plistlib
@@ -400,30 +399,27 @@ def install_service(plugin_dir: Optional[Path] = None) -> bool:
     plat = get_platform()
     python_path = get_python_path()
 
-    if plat == "devcontainer":
-        print("DevContainer 环境，跳过 OS 服务安装（使用 Claude Code Hook）")
+    # 不需要 OS 服务的平台：直接返回 True
+    skip_messages = {
+        "devcontainer": "DevContainer 环境，跳过 OS 服务安装（使用 Claude Code Hook）",
+        "windows": "Windows 暂不支持 OS 启动服务，保持现有 Claude Code Hook 机制",
+    }
+    if plat in skip_messages:
+        print(skip_messages[plat])
         return True
 
-    if plat == "windows":
-        print("Windows 暂不支持 OS 启动服务，保持现有 Claude Code Hook 机制")
-        return True
+    # 平台 → (安装函数, 成功消息) 映射
+    installers = {
+        "macos": (install_launchagent, f"✓ LaunchAgent 已安装: {LAUNCHAGENT_PLIST_PATH}"),
+        "linux_systemd": (install_systemd_service, f"✓ systemd 用户服务已配置: {SERVICE_NAME}"),
+        "linux_cron": (install_cron_service, f"✓ crontab @reboot 已配置 ({CRON_MARKER})"),
+    }
 
-    if plat == "macos":
-        result = install_launchagent(plugin_dir, python_path)
+    if plat in installers:
+        installer, success_msg = installers[plat]
+        result = installer(plugin_dir, python_path)
         if result:
-            print(f"✓ LaunchAgent 已安装: {LAUNCHAGENT_PLIST_PATH}")
-        return result
-
-    if plat == "linux_systemd":
-        result = install_systemd_service(plugin_dir, python_path)
-        if result:
-            print(f"✓ systemd 用户服务已配置: {SERVICE_NAME}")
-        return result
-
-    if plat == "linux_cron":
-        result = install_cron_service(plugin_dir, python_path)
-        if result:
-            print(f"✓ crontab @reboot 已配置 ({CRON_MARKER})")
+            print(success_msg)
         return result
 
     print(f"未知平台 ({plat})，跳过 OS 服务安装")
@@ -438,22 +434,18 @@ def uninstall_service() -> bool:
     """
     plat = get_platform()
 
-    if plat == "macos":
-        result = uninstall_launchagent()
-        if result:
-            print(f"✓ LaunchAgent 已卸载: {LAUNCHAGENT_PLIST_PATH}")
-        return result
+    # 平台 → (卸载函数, 成功消息) 映射
+    uninstallers = {
+        "macos": (uninstall_launchagent, f"✓ LaunchAgent 已卸载: {LAUNCHAGENT_PLIST_PATH}"),
+        "linux_systemd": (uninstall_systemd_service, f"✓ systemd 用户服务已卸载: {SERVICE_NAME}"),
+        "linux_cron": (uninstall_cron_service, "✓ crontab @reboot 已移除"),
+    }
 
-    if plat == "linux_systemd":
-        result = uninstall_systemd_service()
+    if plat in uninstallers:
+        uninstaller, success_msg = uninstallers[plat]
+        result = uninstaller()
         if result:
-            print(f"✓ systemd 用户服务已卸载: {SERVICE_NAME}")
-        return result
-
-    if plat == "linux_cron":
-        result = uninstall_cron_service()
-        if result:
-            print("✓ crontab @reboot 已移除")
+            print(success_msg)
         return result
 
     return True
