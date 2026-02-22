@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "timestamp": "2026-02-22T08:19:32.668630+00:00Z",
+  "timestamp": "2026-02-22T08:25:32.101349+00:00Z",
   "plugins": {
     "document-skills@anthropic-agent-skills": {
       "enabled": true,
@@ -60,7 +60,7 @@
     },
     "superpowers@superpowers-marketplace": {
       "enabled": true,
-      "version": "4.3.0",
+      "version": "4.3.1",
       "scope": "user",
       "marketplace": "superpowers-marketplace",
       "gitCommitSha": "a0b9ecce2b25aa7d703138f17650540c2e8b2cde"
