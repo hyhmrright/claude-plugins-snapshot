@@ -753,7 +753,8 @@ def ensure_global_hook() -> None:
                     existing_hook_idx = j
                     has_matcher = "matcher" in hook_group
                     has_async = hook.get("async") is True
-                    needs_upgrade = not has_matcher or not has_async
+                    has_correct_timeout = hook.get("timeout") == HOOK_TIMEOUT
+                    needs_upgrade = not has_matcher or not has_async or not has_correct_timeout
                     break
             if existing_idx is not None:
                 break
@@ -770,7 +771,9 @@ def ensure_global_hook() -> None:
             hook_entry = hook_group.get("hooks", [])[existing_hook_idx]
             if hook_entry.get("async") is not True:
                 hook_entry["async"] = True
-            log("Upgrading global hook (adding matcher/async)")
+            if hook_entry.get("timeout") != HOOK_TIMEOUT:
+                hook_entry["timeout"] = HOOK_TIMEOUT
+            log("Upgrading global hook (adding matcher/async/timeout)")
         else:
             # 新增条目
             data.setdefault("hooks", {}).setdefault("SessionStart", []).append(
