@@ -6,6 +6,7 @@
 
 ## ✨ 功能特性
 
+- ✅ **OS 级启动服务**：macOS LaunchAgent / Linux systemd，彻底绕开 Claude Code settings 浅合并问题
 - ✅ **自动安装**：启动时自动安装快照中缺失的插件
 - ✅ **智能重试**：安装失败自动重试，10 分钟间隔，最多 5 次
 - ✅ **自动更新**：可配置每次启动更新或定时更新（默认：每次启动时更新）
@@ -86,7 +87,14 @@ python install.py
 
 ### 自动化流程
 
-#### SessionStart Hook（会话启动时）
+#### OS 启动服务（登录时，主要机制）
+
+**每次用户登录时**（macOS LaunchAgent / Linux systemd）：
+- 等待 30 秒系统就绪，然后运行 `auto-manager.py`
+- 完全独立于 Claude Code，不受 settings 文件配置影响
+- 若服务文件缺失，`auto-manager.py` 下次运行时自动重建（自愈）
+
+#### SessionStart Hook（会话启动时，辅助机制）
 
 **每次启动 Claude 时**：
 1. **备份清理**：自动删除 Claude Code 生成的 `~/.claude.json.backup.<timestamp>` 临时备份文件
@@ -141,6 +149,7 @@ auto-manager/
 ├── scripts/
 │   ├── session-start.sh     # Hook 入口（async:true 由 Claude Code 负责后台化）
 │   ├── session-start.py     # Hook 入口备选（Windows）
+│   ├── startup-service.py   # OS 启动服务管理（macOS LaunchAgent / Linux systemd / cron）
 │   ├── auto-manager.py      # 主逻辑（安装 + 更新）
 │   ├── create-snapshot.py   # 生成插件快照
 │   ├── git-sync.py          # Git 同步脚本
@@ -152,7 +161,8 @@ auto-manager/
 │   └── sync-snapshot/
 │       └── SKILL.md
 ├── tests/                   # 测试用例（pytest）
-│   └── test_auto_manager.py
+│   ├── test_auto_manager.py
+│   └── test_startup_service.py
 ├── snapshots/
 │   ├── current.json         # 当前快照（唯一快照文件）
 │   ├── .last-update         # 上次更新时间戳（本地）
@@ -514,25 +524,39 @@ git pull
 
 ### Hook 未触发
 
-1. 检查全局 Hook 配置：
+即使 Claude Code Hook 未触发，OS 启动服务也会独立运行：
+
+1. 检查 OS 启动服务（主要机制）：
+   ```bash
+   # macOS
+   launchctl list | grep com.claude.auto-manager
+   # 若未找到，重新安装：
+   python3 ~/.claude/plugins/auto-manager/scripts/startup-service.py --install
+   ```
+   ```bash
+   # Linux
+   systemctl --user status claude-auto-manager
+   ```
+
+2. 检查全局 Hook 配置：
    ```bash
    cat ~/.claude/settings.local.json | python3 -m json.tool
    ```
    确认 `hooks.SessionStart` 中包含指向 `session-start.sh` 的条目。
 
-2. 修复全局 Hook：
+3. 修复全局 Hook：
    ```bash
    python3 ~/.claude/plugins/auto-manager/install.py
    # 或
    python3 ~/.claude/plugins/auto-manager/scripts/auto-manager.py
    ```
 
-3. 确认插件已启用（备选 Hook）：
+4. 确认插件已启用（备选 Hook）：
    ```bash
    grep "auto-manager" ~/.claude/settings.json
    ```
 
-4. 重启 Claude Code
+5. 重启 Claude Code
 
 ## 📚 相关链接
 
@@ -542,6 +566,9 @@ git pull
 ## 📝 版本历史
 
 - **Unreleased**
+  - **OS 级启动服务**（v1.2.0）：macOS LaunchAgent / Linux systemd / cron，彻底解决 settings 浅合并导致 Hook 丢失的根本问题
+  - **新机器自动设置**：提交 `.claude/settings.json`，首次打开 Claude Code 自动完成 OS 服务注册
+  - **双重运行防护**：5 分钟冷却期，防止 OS 服务和 Hook 重复运行
   - 全局 Hook：迁移至 `~/.claude/settings.local.json`，不再依赖 `installed_plugins.json`；启动时自动修正旧 hook 的 `matcher`/`async`/`timeout` 字段
   - Hook 执行方式：`async: true` 由 Claude Code 负责后台化，超时 120 秒
   - Hook matcher：使用 `matcher: "startup"` 限制只在新会话启动时触发

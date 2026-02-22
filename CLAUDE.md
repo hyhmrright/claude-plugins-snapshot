@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-这是一个 Claude Code 插件自动管理器（Plugin Auto-Manager），通过 SessionStart Hook 实现插件的自动安装、更新和跨机器同步。这是一个本地插件（`@local`），部署在 `~/.claude/plugins/auto-manager/`。
+这是一个 Claude Code 插件自动管理器（Plugin Auto-Manager），通过 OS 级启动服务（主）+ SessionStart Hook（辅）实现插件的自动安装、更新和跨机器同步。这是一个本地插件（`@local`），部署在 `~/.claude/plugins/auto-manager/`。
 
 **当前版本**: v1.1.0（2026-02-14）- 包含重要安全修复和代码质量改进
 
@@ -14,13 +14,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### 三层自动化架构
 
-1. **Hook 层** （双重保障）
-   - **全局 Hook**（主要）：注册在 `~/.claude/settings.local.json`，不依赖 `installed_plugins.json`，始终触发
+1. **触发层** （三重保障）
+   - **OS 启动服务**（主要，v1.2.0 新增）：不依赖 Claude Code 任何配置，彻底绕开 settings 浅合并问题
+     - macOS：`~/Library/LaunchAgents/com.claude.auto-manager.plist`（登录时触发）
+     - Linux（systemd）：`~/.config/systemd/user/claude-auto-manager.service`
+     - Linux（cron）：`@reboot` crontab（systemd 不可用时的 fallback）
+     - DevContainer：跳过（无登录机制），由 Claude Code Hook 负责
+     - 管理工具：`python3 scripts/startup-service.py --install/--uninstall/--check`
+   - **全局 Hook**（辅助）：注册在 `~/.claude/settings.local.json`，作为 DevContainer 和 fallback
    - **插件 Hook**（备选）：`hooks/hooks.json`，依赖插件注册，作为向后兼容保留
-   - 两者均使用 `matcher: "startup"` 限制只在新会话启动时触发（不在 resume/clear/compact 时触发）
-   - 两者均使用 `"async": true` 由 Claude Code 负责后台化执行，延迟 10 秒等待 Claude Code 完成初始化
-   - `scripts/session-start.py` 提供 Windows 备选入口（需在 `install.py` 中配置）
-   - 超时设置：120 秒
+   - Claude Code Hook 使用 `matcher: "startup"` + `"async": true`，延迟 10 秒等待初始化
+   - **双重运行防护**：5 分钟内已运行过则跳过（防 OS 服务 + Hook 同时触发重复运行）
 
 2. **管理层** (`scripts/auto-manager.py`)
    - **主逻辑**：协调安装、更新、同步三大功能
@@ -28,6 +32,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - **会话检测**：自动检测是否在 Claude Code 会话中运行（检查 `CLAUDECODE` 环境变量）避免嵌套会话错误
    - **仓库自同步**：启动时自动 `git pull` 拉取最新快照和配置
    - **自注册机制**：启动时及每次插件安装/更新后，确保自身在 `installed_plugins.json` 中注册，防止被 Claude Code 重建文件导致 Hook 丢失
+   - **OS 启动服务自愈**：`ensure_startup_service()` 在每次启动时快速检查服务文件是否存在，若缺失则自动重新安装
    - **全局 Hook 保障**：将 SessionStart Hook 注册到 `~/.claude/settings.local.json`，不依赖 `installed_plugins.json`，从根本上解决 Hook 丢失的死循环问题；同时在启动时自动升级旧 hook 配置（补全 `matcher`/`async`/`timeout` 字段）
    - **Marketplace 逐个更新**：读取 `known_marketplaces.json` 逐个更新所有 marketplace（含名称验证）
    - **定时更新**：根据 `config.json` 中的 `interval_hours` 配置（0=每次启动，24=每日更新）
@@ -61,6 +66,10 @@ MAX_RETRY_COUNT = 5            # 最大重试次数
 COMMAND_TIMEOUT_SHORT = 60     # Git 操作、快照创建
 COMMAND_TIMEOUT_LONG = 120     # 插件安装/更新
 HOOK_TIMEOUT = 120             # SessionStart Hook 超时
+
+# OS 启动服务（v1.2.0 新增）
+STARTUP_SERVICE_SCRIPT = AUTO_MANAGER_DIR / "scripts" / "startup-service.py"
+RECENT_RUN_THRESHOLD_SECONDS = 300  # 双重运行防护：5分钟冷却期
 ```
 
 **修改常量时注意**：需要同时更新代码中的引用和测试用例
@@ -156,10 +165,26 @@ git clone git@github.com:hyhmrright/claude-plugins-snapshot.git auto-manager
 # 2. 运行安装脚本（跨平台）
 cd auto-manager
 python3 install.py
+# 安装脚本会：配置全局 Hook + 安装 OS 启动服务（macOS LaunchAgent / Linux systemd）
 
 # 3. 重启 Claude Code
-# SessionStart Hook 会自动安装快照中的所有插件
+# 首次启动时，仓库内 .claude/settings.json 的 SessionStart Hook 会自动触发
+# startup-service.py --check-and-install，确保 OS 服务已注册
+
+# 4. 验证 OS 启动服务（macOS）
+launchctl list | grep com.claude.auto-manager
+cat ~/Library/LaunchAgents/com.claude.auto-manager.plist
+
+# 4. 验证 OS 启动服务（Linux systemd）
+systemctl --user status claude-auto-manager
+
+# 5. 手动管理 OS 启动服务
+python3 scripts/startup-service.py --check     # 查看当前状态
+python3 scripts/startup-service.py --install   # 手动安装
+python3 scripts/startup-service.py --uninstall # 手动卸载
 ```
+
+**新机器自动设置说明**：仓库中已提交 `.claude/settings.json`，包含一个 `SessionStart` Hook。当新机器克隆仓库并首次打开 Claude Code 时，该 Hook 自动触发 `startup-service.py --check-and-install`，完成 OS 服务注册。之后即使 `settings.local.json` 中有 `hooks` 字段导致 settings 浅合并遮蔽，OS 服务也已独立运行，不受影响。
 
 ### Git 操作
 
@@ -310,15 +335,22 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 
 ### Hook 未触发
 
-1. **检查全局 Hook**：`cat ~/.claude/settings.local.json | python3 -m json.tool`
+即使 Claude Code Hook 未触发，OS 启动服务也会独立运行。按以下顺序排查：
+
+1. **检查 OS 启动服务**（主要机制，不依赖 Claude Code）：
+   - macOS：`launchctl list | grep com.claude.auto-manager`
+   - Linux：`systemctl --user status claude-auto-manager`
+   - 重装：`python3 ~/.claude/plugins/auto-manager/scripts/startup-service.py --install`
+2. **检查全局 Hook**：`cat ~/.claude/settings.local.json | python3 -m json.tool`
    - 确认 `hooks.SessionStart` 中包含指向 `session-start.sh` 的条目
    - 修复：运行 `python3 install.py` 或 `python3 scripts/auto-manager.py`（会自动配置全局 Hook）
-2. **检查插件级别 Hook**（备选）：`auto-manager` 未在 `installed_plugins.json` 中注册（被 `claude plugin install/update` 重建文件时覆盖）
+   - 注意：若项目级 `.claude/settings.local.json` 有 `hooks` 字段，会覆盖全局 Hook（settings 浅合并），但 OS 服务不受影响
+3. **检查插件级别 Hook**（备选）：`auto-manager` 未在 `installed_plugins.json` 中注册（被 `claude plugin install/update` 重建文件时覆盖）
    - 检查：`python3 -c "import json; d=json.load(open('$HOME/.claude/plugins/installed_plugins.json')); print('auto-manager' in d.get('plugins', {}))"`
    - 修复：运行 `python3 scripts/auto-manager.py`（会自动重新注册），或运行 `python3 install.py`
-3. 检查插件启用状态：`cat ~/.claude/settings.json | grep enabledPlugins`
-4. 重启 Claude Code
-5. 查看启动日志：`tail -f logs/auto-manager.log`
+4. 检查插件启用状态：`cat ~/.claude/settings.json | grep enabledPlugins`
+5. 重启 Claude Code
+6. 查看启动日志：`tail -f logs/auto-manager.log`
 
 ## 代码修改注意事项
 
@@ -406,7 +438,7 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 ### 预先存在的测试失败（非 bug）
 - `TestPluginUpdate::test_skips_local_plugins` 和 `test_no_fallback_on_other_errors` 已知失败
 - 原因：`is_plugin_management_available()` 会额外调用 `claude plugin list`，测试计数过期
-- 运行测试时预期 60/62 通过
+- 运行测试时预期 109/111 通过（新增 `tests/test_startup_service.py` 含 47 个测试）
 
 ### 开发目录 vs 部署目录
 - 开发：`~/code/claude-plugins-snapshot/`（git 工作区）

@@ -6,6 +6,7 @@ Automatically manage Claude Code plugin installation and updates, with cross-mac
 
 ## ✨ Features
 
+- ✅ **OS-Level Startup Service**: macOS LaunchAgent / Linux systemd, bypasses Claude Code settings shallow-merge entirely
 - ✅ **Auto Install**: Automatically install missing plugins from snapshot on startup
 - ✅ **Smart Retry**: Auto-retry failed installations, 10-minute interval, up to 5 attempts
 - ✅ **Auto Update**: Configurable update on every startup or on a schedule (default: every startup)
@@ -86,7 +87,14 @@ The current machine is already set up, and snapshots are synced to GitHub.
 
 ### Automation Flow
 
-#### SessionStart Hook (On Session Start)
+#### OS Startup Service (On Login, Primary Mechanism)
+
+**Every time the user logs in** (macOS LaunchAgent / Linux systemd):
+- Waits 30 seconds for system to be ready, then runs `auto-manager.py`
+- Completely independent of Claude Code, unaffected by settings file configuration
+- If service file is missing, `auto-manager.py` auto-recreates it on next run (self-healing)
+
+#### SessionStart Hook (On Session Start, Secondary Mechanism)
 
 **Every time Claude starts**:
 1. **Backup Cleanup**: Auto-delete Claude Code's temporary `~/.claude.json.backup.<timestamp>` backup files
@@ -141,6 +149,7 @@ auto-manager/
 ├── scripts/
 │   ├── session-start.sh     # Hook entry point (async:true, Claude Code handles backgrounding)
 │   ├── session-start.py     # Hook entry point fallback (Windows)
+│   ├── startup-service.py   # OS startup service management (macOS LaunchAgent / Linux systemd / cron)
 │   ├── auto-manager.py      # Main logic (install + update)
 │   ├── create-snapshot.py   # Generate plugin snapshot
 │   ├── git-sync.py          # Git sync script
@@ -152,7 +161,8 @@ auto-manager/
 │   └── sync-snapshot/
 │       └── SKILL.md
 ├── tests/                   # Test cases (pytest)
-│   └── test_auto_manager.py
+│   ├── test_auto_manager.py
+│   └── test_startup_service.py
 ├── snapshots/
 │   ├── current.json         # Current snapshot (single snapshot file)
 │   ├── .last-update         # Last update timestamp (local)
@@ -514,25 +524,39 @@ git pull
 
 ### Hook Not Triggering
 
-1. Check global Hook configuration:
+Even if the Claude Code Hook doesn't trigger, the OS startup service runs independently:
+
+1. Check OS startup service (primary mechanism):
+   ```bash
+   # macOS
+   launchctl list | grep com.claude.auto-manager
+   # If not found, reinstall:
+   python3 ~/.claude/plugins/auto-manager/scripts/startup-service.py --install
+   ```
+   ```bash
+   # Linux
+   systemctl --user status claude-auto-manager
+   ```
+
+2. Check global Hook configuration:
    ```bash
    cat ~/.claude/settings.local.json | python3 -m json.tool
    ```
    Verify `hooks.SessionStart` contains an entry pointing to `session-start.sh`.
 
-2. Fix global Hook:
+3. Fix global Hook:
    ```bash
    python3 ~/.claude/plugins/auto-manager/install.py
    # or
    python3 ~/.claude/plugins/auto-manager/scripts/auto-manager.py
    ```
 
-3. Verify plugin is enabled (fallback Hook):
+4. Verify plugin is enabled (fallback Hook):
    ```bash
    grep "auto-manager" ~/.claude/settings.json
    ```
 
-4. Restart Claude Code
+5. Restart Claude Code
 
 ## 📚 Related Links
 
@@ -542,6 +566,9 @@ git pull
 ## 📝 Version History
 
 - **Unreleased**
+  - **OS-level startup services** (v1.2.0): macOS LaunchAgent / Linux systemd / cron, the definitive fix for settings shallow-merge causing Hook loss
+  - **New machine auto-setup**: committed `.claude/settings.json` auto-completes OS service registration on first Claude Code open
+  - **Double-run protection**: 5-minute cooldown prevents OS service and Hook from running redundantly
   - Global Hook: migrated to `~/.claude/settings.local.json`, no longer depends on `installed_plugins.json`; auto-corrects old hook `matcher`/`async`/`timeout` fields on startup
   - Hook execution: `async: true` with Claude Code handling backgrounding, 120-second timeout
   - Hook matcher: use `matcher: "startup"` to only trigger on new session start

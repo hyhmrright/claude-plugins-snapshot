@@ -3,6 +3,7 @@
 Claude Code 插件自动管理器 - 跨平台安装脚本
 支持 macOS、Linux、Windows、DevContainer
 """
+import importlib.util
 import json
 import os
 import platform
@@ -246,6 +247,39 @@ def setup_global_hook(plugin_dir: Path) -> bool:
         return False
 
 
+def install_startup_service(plugin_dir: Path) -> None:
+    """安装 OS 级启动服务（macOS LaunchAgent / Linux systemd / cron）
+
+    Args:
+        plugin_dir: auto-manager 部署根目录
+    """
+    startup_script = plugin_dir / "scripts" / "startup-service.py"
+    if not startup_script.exists():
+        log_warn("startup-service.py 未找到，跳过 OS 服务安装")
+        return
+
+    try:
+        spec = importlib.util.spec_from_file_location("startup_service", str(startup_script))
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+
+        plat = m.get_platform()
+        if plat == "devcontainer":
+            log_warn("DevContainer 环境，跳过 OS 服务安装（使用 Claude Code Hook）")
+            return
+        if plat == "windows":
+            log_warn("Windows 暂不支持 OS 启动服务，保持现有 Claude Code Hook 机制")
+            return
+
+        result = m.install_service(plugin_dir)
+        if result:
+            log_info("OS 启动服务已配置（登录时自动运行）")
+        else:
+            log_warn("OS 启动服务配置失败（Claude Code Hook 将作为备用）")
+    except Exception as e:
+        log_warn(f"OS 启动服务配置跳过: {e}")
+
+
 def check_snapshot(plugin_dir: Path) -> None:
     """检查快照文件"""
     snapshot_file = plugin_dir / "snapshots" / "current.json"
@@ -289,8 +323,11 @@ def main() -> int:
     if not update_installed_plugins(plugin_dir):
         return 1
 
-    # 5. 设置全局 Hook（不依赖 installed_plugins.json）
+    # 5. 设置全局 Hook（不依赖 installed_plugins.json，作为 DevContainer 和 fallback）
     setup_global_hook(plugin_dir)
+
+    # 5.5. 安装 OS 级启动服务（主要机制，不依赖 Claude Code Hook）
+    install_startup_service(plugin_dir)
 
     # 6. 检查快照
     check_snapshot(plugin_dir)

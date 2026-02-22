@@ -6,6 +6,7 @@ Claude Code 插件自动管理器
 - 发送 macOS 系统通知
 """
 import argparse
+import importlib.util
 import json
 import os
 import re
@@ -32,6 +33,7 @@ GLOBAL_SKILLS_TARGET_DIR = CLAUDE_DIR / "skills"
 KNOWN_MARKETPLACES_FILE = CLAUDE_DIR / "plugins" / "known_marketplaces.json"
 GLOBAL_SETTINGS_LOCAL = CLAUDE_DIR / "settings.local.json"
 SESSION_START_SCRIPT = AUTO_MANAGER_DIR / "scripts" / "session-start.sh"
+STARTUP_SERVICE_SCRIPT = AUTO_MANAGER_DIR / "scripts" / "startup-service.py"
 
 # 常量配置
 # 日志管理
@@ -46,6 +48,9 @@ MAX_RETRY_COUNT = 5
 COMMAND_TIMEOUT_SHORT = 60   # Git 操作、快照创建
 COMMAND_TIMEOUT_LONG = 120   # 插件安装/更新
 HOOK_TIMEOUT = 120           # SessionStart Hook 超时
+
+# 双重运行防护：5 分钟内运行过则跳过（防 OS 服务 + Claude Code Hook 同时触发）
+RECENT_RUN_THRESHOLD_SECONDS = 300
 
 
 def log(message: str) -> None:
@@ -790,6 +795,36 @@ def ensure_global_hook() -> None:
         log(f"Error ensuring global hook: {e}")
 
 
+def ensure_startup_service() -> None:
+    """确保 OS 级启动服务（LaunchAgent/systemd/cron）已安装（自愈机制）
+
+    只做轻量文件系统检查，不执行 launchctl/systemctl 命令。
+    若服务缺失（如文件被误删），自动调用 startup-service.py 重新安装。
+    异常不中断主流程。
+    """
+    try:
+        if not STARTUP_SERVICE_SCRIPT.exists():
+            log("startup-service.py not found, skipping OS service check")
+            return
+
+        spec = importlib.util.spec_from_file_location("startup_service", str(STARTUP_SERVICE_SCRIPT))
+        startup_service = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(startup_service)
+
+        if startup_service.is_service_installed():
+            log("OS startup service already installed")
+            return
+
+        log("OS startup service missing, reinstalling...")
+        result = startup_service.install_service(AUTO_MANAGER_DIR)
+        if result:
+            log("✓ OS startup service reinstalled")
+        else:
+            log("✗ Failed to reinstall OS startup service")
+    except Exception as e:
+        log(f"Error ensuring OS startup service: {e}")
+
+
 def sync_to_git(config: Dict[str, Any]) -> bool:
     """同步快照到 Git 仓库"""
     if not config["git_sync"]["enabled"]:
@@ -1093,6 +1128,26 @@ def main() -> None:
 
     # 确保全局 Hook 已配置（不依赖 installed_plugins.json）
     ensure_global_hook()
+
+    # 确保 OS 级启动服务已安装（自愈：检测到缺失时重新安装）
+    ensure_startup_service()
+
+    # 双重运行防护：OS 服务和 Claude Code Hook 可能在同一次登录中都触发，
+    # 若 5 分钟内已运行过则跳过（--force-update 参数可绕过此检查）
+    if not args.force_update and LAST_UPDATE_FILE.exists():
+        try:
+            last_run = datetime.fromisoformat(LAST_UPDATE_FILE.read_text(encoding="utf-8").strip())
+            if last_run.tzinfo is None:
+                last_run = last_run.replace(tzinfo=timezone.utc)
+            elapsed = (datetime.now(timezone.utc) - last_run).total_seconds()
+            if elapsed < RECENT_RUN_THRESHOLD_SECONDS:
+                log(f"Skipping: last run was {elapsed:.0f}s ago (< {RECENT_RUN_THRESHOLD_SECONDS}s cooldown)")
+                log("========================================")
+                log("Claude Plugin Auto-Manager Finished")
+                log("========================================")
+                return
+        except Exception:
+            pass  # 时间戳格式异常，继续正常执行
 
     # 0. 同步 auto-manager 仓库自身（拉取最新快照和配置）
     # 在 load_config() 之前执行，确保使用远程最新的配置和快照。

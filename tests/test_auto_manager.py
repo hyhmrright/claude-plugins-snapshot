@@ -5,6 +5,7 @@ Unit tests for auto-manager.py
 import importlib.util
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 
@@ -19,6 +20,7 @@ _spec.loader.exec_module(_auto_manager)
 
 # Import constants and functions from the module under test
 ensure_global_hook = _auto_manager.ensure_global_hook
+ensure_startup_service = _auto_manager.ensure_startup_service
 ensure_self_registered = _auto_manager.ensure_self_registered
 get_all_marketplaces = _auto_manager.get_all_marketplaces
 sync_self_repo = _auto_manager.sync_self_repo
@@ -30,6 +32,8 @@ RETRY_INTERVAL_SECONDS = _auto_manager.RETRY_INTERVAL_SECONDS
 COMMAND_TIMEOUT_SHORT = _auto_manager.COMMAND_TIMEOUT_SHORT
 COMMAND_TIMEOUT_LONG = _auto_manager.COMMAND_TIMEOUT_LONG
 HOOK_TIMEOUT = _auto_manager.HOOK_TIMEOUT
+RECENT_RUN_THRESHOLD_SECONDS = _auto_manager.RECENT_RUN_THRESHOLD_SECONDS
+STARTUP_SERVICE_SCRIPT = _auto_manager.STARTUP_SERVICE_SCRIPT
 escape_for_applescript = _auto_manager.escape_for_applescript
 escape_for_powershell = _auto_manager.escape_for_powershell
 update_all_plugins = _auto_manager.update_all_plugins
@@ -308,7 +312,7 @@ class TestEnsureGlobalHook:
         data = json.loads(settings_local.read_text())
         hook = data["hooks"]["SessionStart"][0]["hooks"][0]
         assert hook.get("async") is True
-        assert hook["timeout"] == 30
+        assert hook["timeout"] == HOOK_TIMEOUT
 
     def test_upgrades_hook_without_matcher(self, tmp_path, monkeypatch, capsys):
         """测试升级缺少 matcher 的旧 Hook"""
@@ -798,6 +802,90 @@ def test_constants_have_expected_values():
     assert COMMAND_TIMEOUT_LONG == 120
     assert COMMAND_TIMEOUT_SHORT < COMMAND_TIMEOUT_LONG
     assert HOOK_TIMEOUT == 120
+    assert RECENT_RUN_THRESHOLD_SECONDS == 300
+
+
+class TestEnsureStartupService:
+    """测试 OS 启动服务自愈机制"""
+
+    def _patch_startup_service(self, monkeypatch, is_installed: bool, install_result: bool = True):
+        """创建 mock startup_service 模块并注入到 auto_manager"""
+        import types
+
+        mock_module = types.SimpleNamespace(
+            is_service_installed=lambda: is_installed,
+            install_service=lambda _plugin_dir: install_result,
+        )
+
+        original_exists = STARTUP_SERVICE_SCRIPT.exists
+
+        def fake_spec_from_file(*args, **kwargs):
+            spec = importlib.util.spec_from_loader("startup_service", loader=None)
+            return spec
+
+        # 通过替换 importlib.util.spec_from_file_location 和 module_from_spec 来注入 mock
+        import importlib.util as ilu
+
+        original_spec_from_file = ilu.spec_from_file_location
+        original_module_from_spec = ilu.module_from_spec
+
+        def mock_spec_from_file(name, path, *args, **kwargs):
+            if "startup_service" in name or "startup-service" in str(path):
+                # 返回一个可以执行的 spec
+                spec = types.SimpleNamespace(
+                    loader=types.SimpleNamespace(exec_module=lambda m: None),
+                    name="startup_service",
+                )
+                return spec
+            return original_spec_from_file(name, path, *args, **kwargs)
+
+        def mock_module_from_spec(spec):
+            if getattr(spec, "name", "") == "startup_service":
+                return mock_module
+            return original_module_from_spec(spec)
+
+        monkeypatch.setattr(ilu, "spec_from_file_location", mock_spec_from_file)
+        monkeypatch.setattr(ilu, "module_from_spec", mock_module_from_spec)
+        # 用一个真实存在的文件路径替换模块常量，让 exists() 返回 True
+        monkeypatch.setattr(_auto_manager, "STARTUP_SERVICE_SCRIPT", Path(__file__))
+
+        return mock_module
+
+    def test_skips_when_service_installed(self, tmp_path, monkeypatch, capsys):
+        """服务已安装时不重新安装"""
+        mock = self._patch_startup_service(monkeypatch, is_installed=True)
+        install_called = []
+        original_install = mock.install_service
+        mock.install_service = lambda d: install_called.append(d) or True
+
+        ensure_startup_service()
+
+        assert len(install_called) == 0
+
+    def test_reinstalls_when_service_missing(self, tmp_path, monkeypatch):
+        """服务缺失时触发重新安装"""
+        mock = self._patch_startup_service(monkeypatch, is_installed=False, install_result=True)
+        install_called = []
+        mock.install_service = lambda d: install_called.append(d) or True
+
+        ensure_startup_service()
+
+        assert len(install_called) == 1
+
+    def test_handles_missing_script_gracefully(self, tmp_path, monkeypatch):
+        """startup-service.py 不存在时不崩溃"""
+        # 指向一个不存在的路径，让 exists() 返回 False
+        monkeypatch.setattr(_auto_manager, "STARTUP_SERVICE_SCRIPT", tmp_path / "nonexistent.py")
+        # 不应抛出异常
+        ensure_startup_service()
+
+    def test_handles_install_failure_gracefully(self, monkeypatch):
+        """安装失败时不中断主流程"""
+        mock = self._patch_startup_service(monkeypatch, is_installed=False)
+        mock.install_service = lambda _: (_ for _ in ()).throw(RuntimeError("install error"))
+
+        # 不应抛出异常
+        ensure_startup_service()
 
 
 if __name__ == "__main__":

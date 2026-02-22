@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **OS-level startup services** (`scripts/startup-service.py`): bypasses Claude Code settings shallow-merge issue entirely
+  - macOS: LaunchAgent at `~/Library/LaunchAgents/com.claude.auto-manager.plist`, fires at user login
+  - Linux (systemd): user service at `~/.config/systemd/user/claude-auto-manager.service`
+  - Linux (cron): `@reboot` fallback when systemd unavailable
+  - DevContainer/Windows: skipped (Claude Code Hook handles these cases)
+  - CLI: `python3 scripts/startup-service.py --install/--uninstall/--check/--check-and-install`
+- **Double-run protection** in `auto-manager.py`: skip execution if last run was within 5 minutes (`RECENT_RUN_THRESHOLD_SECONDS = 300`), preventing OS service + Hook from triggering redundant runs
+- **OS service self-healing** (`ensure_startup_service()`): check service file existence on each startup, auto-reinstall if missing
+- **`.claude/settings.json`** committed to repository: `SessionStart` Hook fires `startup-service.py --check-and-install` on new machine first open, enabling fully automatic OS service setup without manual `install.py`
+- New constants: `STARTUP_SERVICE_SCRIPT`, `RECENT_RUN_THRESHOLD_SECONDS`
+- New test file: `tests/test_startup_service.py` (47 tests covering platform detection, service install/uninstall, DevContainer detection)
 - Global rules sync: automatically sync `global-rules/CLAUDE.md` to `~/.claude/CLAUDE.md` across machines
 - New `global_sync` configuration section in `config.json`
 - `global-rules/CLAUDE.md` added to git-sync whitelist
@@ -28,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Plugin update: skip local plugins (without `@marketplace` suffix) in `update_all_plugins()`
 - Global hook auto-upgrade: `ensure_global_hook()` now detects and upgrades old hooks missing `matcher` field
 - Global hook timeout fix: `ensure_global_hook()` now also checks and corrects `timeout` field (30→120) when upgrading, preventing hooks from being killed before completion
+- **Root cause fix for settings shallow-merge**: Claude Code merges settings files shallowly — a project-level `hooks` key in `settings.local.json` would entirely replace the global `hooks`, silently dropping the `SessionStart` hook. OS-level startup services are the definitive fix since they're completely independent of Claude Code's settings system
 
 ## [1.1.0] - 2026-02-14
 

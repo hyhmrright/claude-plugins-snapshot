@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Claude Code Plugin Auto-Manager that implements automatic plugin installation, updates, and cross-machine synchronization through SessionStart Hook. It is a local plugin (`@local`) deployed at `~/.claude/plugins/auto-manager/`.
+This is a Claude Code Plugin Auto-Manager that implements automatic plugin installation, updates, and cross-machine synchronization via OS-level startup services (primary) + SessionStart Hook (secondary). It is a local plugin (`@local`) deployed at `~/.claude/plugins/auto-manager/`.
 
 **Current Version**: v1.1.0 (2026-02-14) - Includes important security fixes and code quality improvements
 
@@ -14,13 +14,17 @@ This is a Claude Code Plugin Auto-Manager that implements automatic plugin insta
 
 ### Three-Layer Automation Architecture
 
-1. **Hook Layer** (Dual Guarantee)
-   - **Global Hook** (primary): Registered in `~/.claude/settings.local.json`, independent of `installed_plugins.json`, always triggers
-   - **Plugin Hook** (fallback): `hooks/hooks.json`, depends on plugin registration, kept for backward compatibility
-   - Both use `matcher: "startup"` to only trigger on new sessions (not on resume/clear/compact)
-   - Both use `"async": true` for Claude Code-managed background execution, with 10-second delay to wait for Claude Code initialization
-   - `scripts/session-start.py` provides Windows alternative entry point (configure in `install.py`)
-   - Timeout setting: 120 seconds
+1. **Trigger Layer** (Triple Guarantee)
+   - **OS Startup Service** (primary, new in v1.2.0): Completely independent of Claude Code configuration, bypasses the settings shallow-merge problem
+     - macOS: `~/Library/LaunchAgents/com.claude.auto-manager.plist` (triggers at login)
+     - Linux (systemd): `~/.config/systemd/user/claude-auto-manager.service`
+     - Linux (cron): `@reboot` crontab (fallback when systemd unavailable)
+     - DevContainer: skipped (no login mechanism), handled by Claude Code Hook
+     - Management: `python3 scripts/startup-service.py --install/--uninstall/--check`
+   - **Global Hook** (secondary): Registered in `~/.claude/settings.local.json`, DevContainer and fallback
+   - **Plugin Hook** (tertiary): `hooks/hooks.json`, depends on plugin registration, kept for backward compatibility
+   - Claude Code Hooks use `matcher: "startup"` + `"async": true`, with 10-second delay to wait for initialization
+   - **Double-run protection**: Skip if already ran within 5 minutes (prevents OS service + Hook both firing)
 
 2. **Management Layer** (`scripts/auto-manager.py`)
    - **Main logic**: Coordinates install, update, and sync functionality
@@ -28,6 +32,7 @@ This is a Claude Code Plugin Auto-Manager that implements automatic plugin insta
    - **Session detection**: Auto-detects if running inside a Claude Code session (checks `CLAUDECODE` environment variable) to avoid nested session errors
    - **Self-sync**: Auto `git pull` on startup to fetch latest snapshot and config
    - **Self-registration**: Ensures itself is registered in `installed_plugins.json` on startup and after each plugin install/update, preventing Hook loss from Claude Code rebuilding the file
+   - **OS service self-healing**: `ensure_startup_service()` checks service file existence on each startup and auto-reinstalls if missing
    - **Global Hook guarantee**: Registers SessionStart Hook in `~/.claude/settings.local.json`, independent of `installed_plugins.json`, fundamentally solving the Hook loss deadlock problem; also auto-upgrades old hook configs on startup (filling in missing `matcher`/`async`/`timeout` fields)
    - **Per-marketplace updates**: Reads `known_marketplaces.json` and updates each marketplace individually (with name validation)
    - **Scheduled updates**: Based on `interval_hours` configuration in `config.json` (0=every startup, 24=daily update)
@@ -61,6 +66,10 @@ MAX_RETRY_COUNT = 5            # Maximum retry count
 COMMAND_TIMEOUT_SHORT = 60     # Git operations, snapshot creation
 COMMAND_TIMEOUT_LONG = 120     # Plugin install/update
 HOOK_TIMEOUT = 120             # SessionStart Hook timeout
+
+# OS Startup Service (new in v1.2.0)
+STARTUP_SERVICE_SCRIPT = AUTO_MANAGER_DIR / "scripts" / "startup-service.py"
+RECENT_RUN_THRESHOLD_SECONDS = 300  # Double-run protection: 5-minute cooldown
 ```
 
 **Note when modifying constants**: References in code and test cases must be updated simultaneously
@@ -156,10 +165,26 @@ git clone git@github.com:hyhmrright/claude-plugins-snapshot.git auto-manager
 # 2. Run install script (cross-platform)
 cd auto-manager
 python3 install.py
+# The install script will: configure global Hook + install OS startup service (macOS LaunchAgent / Linux systemd)
 
 # 3. Restart Claude Code
-# SessionStart Hook will automatically install all plugins from the snapshot
+# On first startup, the committed .claude/settings.json SessionStart Hook auto-triggers
+# startup-service.py --check-and-install to ensure OS service is registered
+
+# 4. Verify OS startup service (macOS)
+launchctl list | grep com.claude.auto-manager
+cat ~/Library/LaunchAgents/com.claude.auto-manager.plist
+
+# 4. Verify OS startup service (Linux systemd)
+systemctl --user status claude-auto-manager
+
+# 5. Manage OS startup service manually
+python3 scripts/startup-service.py --check     # View current status
+python3 scripts/startup-service.py --install   # Manual install
+python3 scripts/startup-service.py --uninstall # Manual uninstall
 ```
+
+**New machine auto-setup note**: The repo includes a committed `.claude/settings.json` with a `SessionStart` Hook. When cloning and opening Claude Code on a new machine, this Hook auto-fires `startup-service.py --check-and-install` to register the OS service. Once registered, the OS service runs independently — even if `settings.local.json` has a `hooks` key that shadows the global hook (shallow merge), the OS service is unaffected.
 
 ### Git Operations
 
@@ -386,15 +411,22 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 
 ### Hook Not Triggering
 
-1. **Check global Hook**: `cat ~/.claude/settings.local.json | python3 -m json.tool`
+Even if the Claude Code Hook doesn't trigger, the OS startup service runs independently. Troubleshoot in this order:
+
+1. **Check OS startup service** (primary mechanism, independent of Claude Code):
+   - macOS: `launchctl list | grep com.claude.auto-manager`
+   - Linux: `systemctl --user status claude-auto-manager`
+   - Reinstall: `python3 ~/.claude/plugins/auto-manager/scripts/startup-service.py --install`
+2. **Check global Hook**: `cat ~/.claude/settings.local.json | python3 -m json.tool`
    - Verify `hooks.SessionStart` contains an entry pointing to `session-start.sh`
    - Fix: Run `python3 install.py` or `python3 scripts/auto-manager.py` (will auto-configure global Hook)
-2. **Check plugin-level Hook** (fallback): `auto-manager` not registered in `installed_plugins.json` (overwritten when `claude plugin install/update` rebuilds the file)
+   - Note: If a project-level `.claude/settings.local.json` has a `hooks` key, it will shadow the global Hook (shallow merge), but the OS service is unaffected
+3. **Check plugin-level Hook** (fallback): `auto-manager` not registered in `installed_plugins.json` (overwritten when `claude plugin install/update` rebuilds the file)
    - Check: `python3 -c "import json; d=json.load(open('$HOME/.claude/plugins/installed_plugins.json')); print('auto-manager' in d.get('plugins', {}))"`
    - Fix: Run `python3 scripts/auto-manager.py` (will auto-re-register), or run `python3 install.py`
-3. Check plugin enabled state: `cat ~/.claude/settings.json | grep enabledPlugins`
-4. Restart Claude Code
-5. View startup logs: `tail -f logs/auto-manager.log`
+4. Check plugin enabled state: `cat ~/.claude/settings.json | grep enabledPlugins`
+5. Restart Claude Code
+6. View startup logs: `tail -f logs/auto-manager.log`
 
 ## Code Modification Guidelines
 
