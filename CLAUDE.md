@@ -34,14 +34,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - **日志管理**：自动轮转，超过 10MB 时截断到 8MB
    - **备份清理**：每次启动时自动删除 Claude Code 生成的 `~/.claude.json.backup.<timestamp>` 备份文件，只保留主备份文件
    - **全局规则同步**：将仓库中的全局规则自动同步到 `~/.claude/CLAUDE.md`
-   - **常量化配置**：所有魔术数字已提取为常量（v1.1.0）
+   - **常量化配置**：所有魔术数字已提取为常量
 
 3. **工具层**
    - `create-snapshot.py`：从 Claude 配置文件生成快照（含输入验证）
    - `git-sync.py`：将快照同步到 Git 仓库（仅添加特定文件）
    - `sync-snapshot.py`：手动触发快照同步（跨平台）
 
-### 关键常量（v1.1.0 新增）
+### 关键常量
 
 所有配置常量在 `scripts/auto-manager.py` 顶部定义：
 
@@ -126,7 +126,7 @@ cat snapshots/current.json | python3 -m json.tool
 cat snapshots/.last-install-state.json | python3 -m json.tool
 ```
 
-### 运行测试（v1.1.0 新增）
+### 运行测试
 
 ```bash
 # 安装依赖（使用 uv 管理）
@@ -236,89 +236,13 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 
 ## 工作原理
 
-### SessionStart Hook 执行流程
+### SessionStart Hook 非显而易见的行为
 
-1. **触发时机**：每次启动 Claude Code 时
-2. **启动延迟**：等待 10 秒让 Claude Code 完成初始化（`async: true` 由 Claude Code 负责后台化，避免竞态条件导致 `claude plugin update` 因插件系统未就绪而失败）
-3. **备份清理**：自动删除 Claude Code 生成的带时间戳的配置备份文件
-   - 删除 `~/.claude.json.backup.<timestamp>` 格式的文件
-   - 保留 `~/.claude.json.backup`（主备份文件）
-   - 目的：防止备份文件无限累积占用磁盘空间
-4. **自注册检查**：确保 auto-manager 在 `installed_plugins.json` 中注册
-   - 防止被 Claude Code 插件操作重建文件时覆盖
-   - 丢失注册信息会导致插件级别 Hook 不再被触发
-5. **全局 Hook 检查**：确保 SessionStart Hook 在 `~/.claude/settings.local.json` 中注册
-   - 不依赖 `installed_plugins.json`，始终触发
-   - 从根本上解决 Hook 丢失的死循环问题
-6. **仓库自同步**：`git pull --ff-only` 拉取最新快照和配置
-   - 在 `load_config()` 之前执行，确保使用远程最新配置
-   - 不受 `git_sync.enabled` 控制（只读操作且配置尚未加载）
-7. **会话检测**：检查 `CLAUDECODE` 环境变量
-   - 如果在 Claude Code 会话中 → 跳过更新（避免嵌套会话错误）
-   - 如果不在会话中 → 正常执行
-   - `session-start.sh` 在执行前会 unset 此变量
-8. **安装缺失插件**：
-   - 读取 `snapshots/current.json` 中的插件列表
-   - 对比 `~/.claude/plugins/installed_plugins.json` 中的已安装列表
-   - 安装缺失的插件
-   - 失败时记录到 `.last-install-state.json` 供后续重试
-   - **安装后重新注册自身**（`claude plugin install` 会重建 `installed_plugins.json`）
-9. **全局规则同步**：
-   - 读取 `global-rules/CLAUDE.md`
-   - 对比 `~/.claude/CLAUDE.md` 内容
-   - 有变化 → 更新目标文件
-   - 无变化 → 跳过
-10. **全局 Skills 同步**：
-    - 遍历 `global-skills/` 下的每个子目录
-    - 读取 `SKILL.md` 并对比 `~/.claude/skills/<name>/SKILL.md` 内容
-    - 有变化 → 更新目标文件
-    - 无变化 → 跳过
-11. **智能重试**：
-    - 读取 `.last-install-state.json` 中的失败记录
-    - 检查是否超过 10 分钟重试间隔
-    - 重试次数未超过 5 次 → 重试安装
-    - 超过 5 次 → 暂时放弃，等待手动干预
-12. **定时更新**（可配置）：
-    - 检查 `.last-update` 时间戳
-    - 如果距离上次更新超过 `interval_hours` → 执行更新
-    - `interval_hours: 0` → 每次启动都更新
-13. **更新流程**：
-    - 先逐个更新 Marketplaces（`claude plugin marketplace update <name>`）
-    - 从 `~/.claude/plugins/known_marketplaces.json` 读取所有 marketplace
-    - 再逐个更新所有已安装插件（`claude plugin update <name>`）
-    - **更新后重新注册自身**（`claude plugin update` 会重建 `installed_plugins.json`）
-14. **Git 同步**：
-    - 生成新快照
-    - 对比插件列表是否变化
-    - 有变化 → commit 并 push
-    - 无变化 → 跳过（只是版本号更新）
-15. **系统通知**（可配置）：
-    - macOS：使用 `osascript`
-    - Linux：使用 `notify-send`
-    - Windows：使用 PowerShell Toast
-
-### 重试机制详解
-
-**状态文件格式** (`.last-install-state.json`):
-```json
-{
-  "plugin-name@marketplace": {
-    "last_attempt": "2026-02-14T03:00:13Z",
-    "retry_count": 2,
-    "error": "Installation failed: timeout"
-  }
-}
-```
-
-**重试逻辑**（v1.1.0 修复）：
-- 每次启动时检查所有失败的插件
-- 计算距离上次尝试的时间
-- **首次失败**：`retry_count = 1`（v1.1.0 修复：之前错误地设为 0）
-- 如果 `now - last_attempt >= RETRY_INTERVAL_SECONDS` 且 `retry_count <= MAX_RETRY_COUNT`：
-  - 重试安装
-  - 成功 → 从状态文件移除
-  - 失败 → 增加 `retry_count`
-- 如果 `retry_count > MAX_RETRY_COUNT` → 跳过，记录警告日志
+- **启动延迟原因**：等待 10 秒是因为 `async: true` 由 Claude Code 负责后台化；若太早执行，插件系统尚未就绪会导致 `claude plugin update` 失败
+- **`git pull` 在 `load_config()` 之前**：确保拉取远程最新配置后再加载，不受 `git_sync.enabled` 控制
+- **`session-start.sh` 会 unset CLAUDECODE**：执行前清除该变量，确保会话检测逻辑正确触发 auto-manager
+- **每次插件操作后必须重新注册自身**：`claude plugin install/update` 会重建 `installed_plugins.json`，覆盖自身注册信息，导致插件级别 Hook 丢失
+- **备份文件清理范围**：删除 `~/.claude.json.backup.<timestamp>` 格式的文件，保留 `~/.claude.json.backup`（主备份）
 
 ## 跨平台支持
 
@@ -404,14 +328,15 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 2. **保持向后兼容**：修改配置格式时提供默认值
 3. **错误处理**：重要操作失败不应中断整个流程（例如日志轮转失败）
 4. **原子操作**：修改配置文件时使用临时文件避免损坏
-5. **使用常量**：不要硬编码魔术数字，使用文件顶部定义的常量（v1.1.0）
-6. **类型提示**：为新函数添加完整的类型提示 `typing.Dict[str, Any]` 等（v1.1.0）
-7. **文档字符串**：包含参数和返回值说明（v1.1.0）
-8. **输入验证**：验证所有外部输入（插件名格式、配置值等）（v1.1.0）
+5. **使用常量**：不要硬编码魔术数字，使用文件顶部定义的常量
+6. **类型提示**：为新函数添加完整的类型提示 `typing.Dict[str, Any]` 等
+7. **文档字符串**：包含参数和返回值说明
+8. **输入验证**：验证所有外部输入（插件名格式、配置值等）
 9. **安全性**：
-   - 转义所有传递给 shell 的字符串（防止命令注入）
+   - 转义所有传递给 shell 的字符串（防止命令注入）；macOS 用 `escape_for_applescript()`，Windows 用 `escape_for_powershell()`
    - 使用 UTC 时间戳（避免时区问题）
    - Git 操作只添加特定文件，不使用 `git add .`
+   - 脚本权限使用 `0o744`（不是 `0o755`）
 
 ### 修改 Hook 配置时
 
@@ -428,7 +353,7 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 
 ### 添加新功能时
 
-1. **编写测试**：在 `tests/` 目录添加对应的测试用例（v1.1.0）
+1. **编写测试**：在 `tests/` 目录添加对应的测试用例
 2. **更新文档**：同时更新 CLAUDE.md、CLAUDE.en.md、README.md、README.en.md（中英文各两个文件，共四个）
 3. **更新 CHANGELOG**：记录到 CHANGELOG.md 的 Unreleased 部分
 4. **代码审查**：运行 `pytest tests/ -v` 确保所有测试通过
@@ -436,14 +361,6 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 6. **新增同步功能**：复用已有同步函数模式（如 `sync_global_skills()` 参照 `sync_global_rules()`），包含：外层 try-except、内容变化检测、原子写入、日志输出
 7. **跨机器同步的文件**：应放在仓库目录（如 `global-skills/`）而非 `~/.claude/` 下，由 auto-manager 负责同步到目标位置
 
-### 重要安全修复（v1.1.0）
-
-1. **会话检测环境变量**：必须使用 `CLAUDECODE`（已确认为 claude CLI 实际使用的变量；v1.1.0 曾错误地改为 `CLAUDE_CODE_SESSION_ID`，已在后续版本修正）
-2. **通知消息转义**：
-   - macOS: `escape_for_applescript()` - 转义 `\` 和 `"`
-   - Windows: `escape_for_powershell()` - 转义 `"` 和 `$`
-3. **Git 安全**：只添加白名单文件，防止敏感数据泄露
-4. **文件权限**：脚本权限使用 `0o744`（不是 `0o755`）
 
 ## Git 仓库说明
 
@@ -455,10 +372,10 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
   - 文档：`CLAUDE.md`, `README.md`, `CHANGELOG.md`, `LICENSE`
   - 代码：`scripts/`, `hooks/`, `.claude/hooks/`, `install.py`, `install.sh`
   - 快照：`snapshots/current.json`
-  - 测试：`tests/` （v1.1.0 新增）
+  - 测试：`tests/`
   - Skills：`global-skills/`
 - **忽略文件**：`logs/`, `snapshots/.last-update`, `snapshots/.last-install-state.json`, `.claude/settings.local.json`
-- **Git 同步策略**（v1.1.0 安全增强）：
+- **Git 同步策略**：
   - 白名单模式：只添加特定文件到 Git
   - 防止敏感数据泄露（.env, credentials, 私钥等）
 
