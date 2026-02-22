@@ -565,8 +565,8 @@ Even if the Claude Code Hook doesn't trigger, the OS startup service runs indepe
 
 ## 📝 Version History
 
-- **Unreleased**
-  - **OS-level startup services** (v1.2.0): macOS LaunchAgent / Linux systemd / cron, the definitive fix for settings shallow-merge causing Hook loss
+- **1.2.0** (2026-02-22)
+  - **OS-level startup services**: macOS LaunchAgent / Linux systemd / cron, the definitive fix for settings shallow-merge causing Hook loss
   - **New machine auto-setup**: committed `.claude/settings.json` auto-completes OS service registration on first Claude Code open
   - **Double-run protection**: 5-minute cooldown prevents OS service and Hook from running redundantly
   - Global Hook: migrated to `~/.claude/settings.local.json`, no longer depends on `installed_plugins.json`; auto-corrects old hook `matcher`/`async`/`timeout` fields on startup

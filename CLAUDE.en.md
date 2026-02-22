@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a Claude Code Plugin Auto-Manager that implements automatic plugin installation, updates, and cross-machine synchronization via OS-level startup services (primary) + SessionStart Hook (secondary). It is a local plugin (`@local`) deployed at `~/.claude/plugins/auto-manager/`.
 
-**Current Version**: v1.1.0 (2026-02-14) - Includes important security fixes and code quality improvements
+**Current Version**: v1.2.0 (2026-02-22) - OS-level startup services, definitive fix for settings shallow-merge issue
 
 ## Core Architecture
 

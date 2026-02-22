@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 这是一个 Claude Code 插件自动管理器（Plugin Auto-Manager），通过 OS 级启动服务（主）+ SessionStart Hook（辅）实现插件的自动安装、更新和跨机器同步。这是一个本地插件（`@local`），部署在 `~/.claude/plugins/auto-manager/`。
 
-**当前版本**: v1.1.0（2026-02-14）- 包含重要安全修复和代码质量改进
+**当前版本**: v1.2.0（2026-02-22）- 添加 OS 级启动服务，彻底解决 settings 浅合并问题
 
 ## 核心架构
 

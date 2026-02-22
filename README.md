@@ -565,8 +565,8 @@ git pull
 
 ## 📝 版本历史
 
-- **Unreleased**
-  - **OS 级启动服务**（v1.2.0）：macOS LaunchAgent / Linux systemd / cron，彻底解决 settings 浅合并导致 Hook 丢失的根本问题
+- **1.2.0** (2026-02-22)
+  - **OS 级启动服务**：macOS LaunchAgent / Linux systemd / cron，彻底解决 settings 浅合并导致 Hook 丢失的根本问题
   - **新机器自动设置**：提交 `.claude/settings.json`，首次打开 Claude Code 自动完成 OS 服务注册
   - **双重运行防护**：5 分钟冷却期，防止 OS 服务和 Hook 重复运行
   - 全局 Hook：迁移至 `~/.claude/settings.local.json`，不再依赖 `installed_plugins.json`；启动时自动修正旧 hook 的 `matcher`/`async`/`timeout` 字段

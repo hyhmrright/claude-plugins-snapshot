@@ -5,7 +5,7 @@ All notable changes to Claude Plugin Auto-Manager will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.2.0] - 2026-02-22
 
 ### Added
 - **OS-level startup services** (`scripts/startup-service.py`): bypasses Claude Code settings shallow-merge issue entirely
@@ -20,8 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New constants: `STARTUP_SERVICE_SCRIPT`, `RECENT_RUN_THRESHOLD_SECONDS`
 - New test file: `tests/test_startup_service.py` (47 tests covering platform detection, service install/uninstall, DevContainer detection)
 - Global rules sync: automatically sync `global-rules/CLAUDE.md` to `~/.claude/CLAUDE.md` across machines
-- New `global_sync` configuration section in `config.json`
-- `global-rules/CLAUDE.md` added to git-sync whitelist
+- Global skills sync: automatically sync `global-skills/` directory to `~/.claude/skills/` across machines
+- New `global_sync` and `global_skills_sync` configuration sections in `config.json`
+- `global-rules/CLAUDE.md` and `global-skills/` added to git-sync whitelist
 - Windows Hook entry point: `scripts/session-start.py` as alternative for Windows (macOS/Linux continues using `session-start.sh`)
 - Per-marketplace updates: read `known_marketplaces.json` and update each marketplace individually with name validation (`_is_valid_marketplace_name()`)
 - Self-sync: `git pull --ff-only` on startup to fetch latest snapshot and config before any operations
@@ -38,7 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Plugin update retry logic: check both stdout and stderr for "not installed" error (claude CLI may output errors to either stream)
 - Plugin update: skip local plugins (without `@marketplace` suffix) in `update_all_plugins()`
 - Global hook auto-upgrade: `ensure_global_hook()` now detects and upgrades old hooks missing `matcher` field
-- Global hook timeout fix: `ensure_global_hook()` now also checks and corrects `timeout` field (30→120) when upgrading, preventing hooks from being killed before completion
+- Global hook timeout fix: `ensure_global_hook()` now also checks and corrects `timeout` field (60→120) when upgrading, preventing hooks from being killed before completion
+- Cross-platform marketplace sync: correctly propagate `autoUpdate` field from snapshot to `known_marketplaces.json`
 - **Root cause fix for settings shallow-merge**: Claude Code merges settings files shallowly — a project-level `hooks` key in `settings.local.json` would entirely replace the global `hooks`, silently dropping the `SessionStart` hook. OS-level startup services are the definitive fix since they're completely independent of Claude Code's settings system
 
 ## [1.1.0] - 2026-02-14
@@ -92,5 +94,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Configurable update intervals (0 = every startup, N = hours)
 - Smart Git push strategy (only on plugin list changes)
 
+[1.2.0]: https://github.com/hyhmrright/claude-plugins-snapshot/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/hyhmrright/claude-plugins-snapshot/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/hyhmrright/claude-plugins-snapshot/releases/tag/v1.0.0
