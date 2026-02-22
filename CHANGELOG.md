@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Plugin update retry logic: check both stdout and stderr for "not installed" error (claude CLI may output errors to either stream)
 - Plugin update: skip local plugins (without `@marketplace` suffix) in `update_all_plugins()`
 - Global hook auto-upgrade: `ensure_global_hook()` now detects and upgrades old hooks missing `matcher` field
+- Global hook timeout fix: `ensure_global_hook()` now also checks and corrects `timeout` field (30→120) when upgrading, preventing hooks from being killed before completion
 
 ## [1.1.0] - 2026-02-14
 

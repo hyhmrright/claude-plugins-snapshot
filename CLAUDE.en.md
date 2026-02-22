@@ -28,7 +28,7 @@ This is a Claude Code Plugin Auto-Manager that implements automatic plugin insta
    - **Session detection**: Auto-detects if running inside a Claude Code session (checks `CLAUDECODE` environment variable) to avoid nested session errors
    - **Self-sync**: Auto `git pull` on startup to fetch latest snapshot and config
    - **Self-registration**: Ensures itself is registered in `installed_plugins.json` on startup and after each plugin install/update, preventing Hook loss from Claude Code rebuilding the file
-   - **Global Hook guarantee**: Registers SessionStart Hook in `~/.claude/settings.local.json`, independent of `installed_plugins.json`, fundamentally solving the Hook loss deadlock problem
+   - **Global Hook guarantee**: Registers SessionStart Hook in `~/.claude/settings.local.json`, independent of `installed_plugins.json`, fundamentally solving the Hook loss deadlock problem; also auto-upgrades old hook configs on startup (filling in missing `matcher`/`async`/`timeout` fields)
    - **Per-marketplace updates**: Reads `known_marketplaces.json` and updates each marketplace individually (with name validation)
    - **Scheduled updates**: Based on `interval_hours` configuration in `config.json` (0=every startup, 24=daily update)
    - **Log management**: Auto-rotation, truncates to 8MB when exceeding 10MB
@@ -416,7 +416,7 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 ### When Modifying Hook Configuration
 
 1. **Use async mode**: SessionStart Hook must set `"async": true`, letting Claude Code handle backgrounding
-2. **Timeout settings**: Hook timeout should be long enough (currently 120 seconds), keep in sync with `HOOK_TIMEOUT` constant
+2. **Timeout settings**: Hook timeout should be long enough (currently 120 seconds), keep in sync with `HOOK_TIMEOUT` constant; `ensure_global_hook()` auto-detects and corrects old hook `timeout` fields on startup
 3. **Log redirection**: All output redirected to `logs/auto-manager.log`
 4. **Do NOT change Hook entry to `python3`**: Claude Code Hook execution environment's `PATH` may not include `python3`. Must use `.sh` script with direct path execution (via shebang to call bash)
 

@@ -28,7 +28,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - **会话检测**：自动检测是否在 Claude Code 会话中运行（检查 `CLAUDECODE` 环境变量）避免嵌套会话错误
    - **仓库自同步**：启动时自动 `git pull` 拉取最新快照和配置
    - **自注册机制**：启动时及每次插件安装/更新后，确保自身在 `installed_plugins.json` 中注册，防止被 Claude Code 重建文件导致 Hook 丢失
-   - **全局 Hook 保障**：将 SessionStart Hook 注册到 `~/.claude/settings.local.json`，不依赖 `installed_plugins.json`，从根本上解决 Hook 丢失的死循环问题
+   - **全局 Hook 保障**：将 SessionStart Hook 注册到 `~/.claude/settings.local.json`，不依赖 `installed_plugins.json`，从根本上解决 Hook 丢失的死循环问题；同时在启动时自动升级旧 hook 配置（补全 `matcher`/`async`/`timeout` 字段）
    - **Marketplace 逐个更新**：读取 `known_marketplaces.json` 逐个更新所有 marketplace（含名称验证）
    - **定时更新**：根据 `config.json` 中的 `interval_hours` 配置（0=每次启动，24=每日更新）
    - **日志管理**：自动轮转，超过 10MB 时截断到 8MB
@@ -341,7 +341,7 @@ cat snapshots/current.json | python3 -c "import sys, json; data=json.load(sys.st
 ### 修改 Hook 配置时
 
 1. **使用 async 模式**：SessionStart Hook 必须设置 `"async": true`，由 Claude Code 负责后台化执行
-2. **超时设置**：Hook 超时应足够长（当前 120 秒），与 `HOOK_TIMEOUT` 常量保持一致
+2. **超时设置**：Hook 超时应足够长（当前 120 秒），与 `HOOK_TIMEOUT` 常量保持一致；`ensure_global_hook()` 会在启动时自动检测并修正旧 hook 的 `timeout` 字段
 3. **日志重定向**：所有输出重定向到 `logs/auto-manager.log`
 4. **不要改 Hook 入口为 `python3`**：Claude Code Hook 执行环境的 `PATH` 可能不包含 `python3`，必须使用 `.sh` 脚本直接执行（通过 shebang 调用 bash）
 
