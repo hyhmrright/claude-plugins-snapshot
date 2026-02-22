@@ -488,12 +488,48 @@ def _update_single_plugin(plugin_name: str) -> bool:
         return False
 
 
+def is_plugin_management_available() -> bool:
+    """检查 claude plugin 命令是否可用
+
+    某些 Claude Code 版本中，versioned plugins 功能可能被服务端
+    feature flag (tengu_enable_versioned_plugins) 禁用，导致
+    claude plugin list/update 等命令无法正常工作。
+
+    通过对比 CLI 输出与 installed_plugins.json 来检测此情况：
+    若 CLI 报告无插件但 JSON 中有插件，说明功能被禁用。
+    """
+    installed = get_installed_plugins()
+    if not installed:
+        return True  # 无已安装插件，无法判断，允许尝试
+
+    try:
+        result = subprocess.run(
+            ["claude", "plugin", "list"],
+            capture_output=True, text=True, timeout=30, check=False
+        )
+        combined = (result.stdout + result.stderr).lower()
+        if "no plugins installed" in combined:
+            log(
+                "⚠ Plugin update unavailable: versioned plugins feature flag is disabled "
+                "(tengu_enable_versioned_plugins=false). "
+                "Plugin management commands will be skipped until the flag is re-enabled."
+            )
+            return False
+    except Exception:
+        pass  # 检查失败时不阻止更新尝试
+
+    return True
+
+
 def update_all_plugins() -> int:
     """更新所有已安装的插件（跳过本地插件）"""
     installed = get_installed_plugins()
 
     if not installed:
         log("No plugins installed, skipping update")
+        return 0
+
+    if not is_plugin_management_available():
         return 0
 
     # 过滤掉本地插件（无 @ 标识的插件）
@@ -1011,12 +1047,10 @@ def main() -> None:
         # claude plugin update 可能重建 installed_plugins.json，需要重新注册
         ensure_self_registered()
 
-        if marketplace_updated > 0 or update_count > 0:
-            # 发送通知
+        if update_count > 0:
+            # 仅在有插件实际更新时才发送通知
             if config["auto_update"]["notify"]:
-                msg = f"Updated {update_count} plugin(s)"
-                if marketplace_updated > 0:
-                    msg = f"Updated marketplaces and {update_count} plugin(s)"
+                msg = f"Updated marketplaces and {update_count} plugin(s)" if marketplace_updated > 0 else f"Updated {update_count} plugin(s)"
                 send_notification("Auto-Update", msg)
 
         # 更新时间戳
