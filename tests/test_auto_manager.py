@@ -186,12 +186,12 @@ class TestSyncSelfRepo:
         self._make_mock_run(monkeypatch, returncode=1, stderr="fatal: not a git repository")
         assert sync_self_repo() is False
 
-    def test_sync_uses_ff_only_and_correct_cwd(self, monkeypatch):
-        """测试使用 --ff-only 且 cwd 指向 AUTO_MANAGER_DIR"""
+    def test_sync_uses_rebase_and_correct_cwd(self, monkeypatch):
+        """测试使用 --rebase 且 cwd 指向 AUTO_MANAGER_DIR"""
         captured = self._make_mock_run(monkeypatch, stdout="Already up to date.\n")
         sync_self_repo()
 
-        assert captured["cmd"] == ["git", "pull", "--ff-only"]
+        assert captured["cmd"] == ["git", "pull", "--rebase", "origin", "main"]
         assert captured["kwargs"]["cwd"] == str(_auto_manager.AUTO_MANAGER_DIR)
 
 
