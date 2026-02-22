@@ -19,6 +19,7 @@ def create_snapshot() -> Path:
     claude_dir = Path.home() / ".claude"
     snapshot_dir = claude_dir / "plugins" / "auto-manager" / "snapshots"
     snapshot_dir.mkdir(parents=True, exist_ok=True)
+    current_file = snapshot_dir / "current.json"
 
     # 读取当前配置
     settings_file = claude_dir / "settings.json"
@@ -41,9 +42,20 @@ def create_snapshot() -> Path:
     if marketplaces_file.exists():
         marketplaces = json.loads(marketplaces_file.read_text())
 
+    # 读取当前版本号并自增（首次创建为 "1.0"，之后 minor 版本递增）
+    next_version = "1.0"
+    if current_file.exists():
+        try:
+            old = json.loads(current_file.read_text())
+            parts = str(old.get("version", "1.0")).split(".")
+            minor = int(parts[1]) if len(parts) == 2 else 0
+            next_version = f"1.{minor + 1}"
+        except Exception:
+            next_version = "1.1"
+
     # 构建快照
     snapshot = {
-        "version": "1.0",
+        "version": next_version,
         "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
         "plugins": {},
         "marketplaces": {},
@@ -97,7 +109,6 @@ def create_snapshot() -> Path:
             }
 
     # 直接保存为 current.json（不创建历史快照）
-    current_file = snapshot_dir / "current.json"
     current_file.write_text(json.dumps(snapshot, indent=2) + "\n")
 
     log("Snapshot updated: current.json")

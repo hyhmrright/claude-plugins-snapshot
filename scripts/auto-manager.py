@@ -582,7 +582,8 @@ def snapshot_has_changes() -> bool:
         old_plugins = set(old_snapshot.get("plugins", {}).keys())
         old_marketplaces = set(old_snapshot.get("marketplaces", {}).keys())
 
-        current_plugins = get_installed_plugins()
+        # 过滤掉本地插件（无 @ 后缀），与快照中的插件列表保持一致
+        current_plugins = {p for p in get_installed_plugins() if "@" in p}
         current_marketplaces = get_local_marketplaces()
 
         changed = False
