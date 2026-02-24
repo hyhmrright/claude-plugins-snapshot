@@ -1,6 +1,6 @@
 {
-  "version": "1.0",
-  "timestamp": "2026-02-22T13:15:07.880029+00:00Z",
+  "version": "1.1",
+  "timestamp": "2026-02-24T06:43:38.922950+00:00Z",
   "plugins": {
     "document-skills@anthropic-agent-skills": {
       "enabled": true,
@@ -18,14 +18,14 @@
     },
     "code-review@claude-plugins-official": {
       "enabled": true,
-      "version": "aa296ec81e8c",
+      "version": "99e11d959269",
       "scope": "user",
       "marketplace": "claude-plugins-official",
       "gitCommitSha": "aa296ec81e8ccb49c9784f167c2c0aa625a86cec"
     },
     "feature-dev@claude-plugins-official": {
       "enabled": true,
-      "version": "aa296ec81e8c",
+      "version": "99e11d959269",
       "scope": "user",
       "marketplace": "claude-plugins-official",
       "gitCommitSha": "aa296ec81e8ccb49c9784f167c2c0aa625a86cec"
@@ -39,21 +39,21 @@
     },
     "commit-commands@claude-plugins-official": {
       "enabled": true,
-      "version": "aa296ec81e8c",
+      "version": "99e11d959269",
       "scope": "user",
       "marketplace": "claude-plugins-official",
       "gitCommitSha": "aa296ec81e8ccb49c9784f167c2c0aa625a86cec"
     },
     "github@claude-plugins-official": {
       "enabled": true,
-      "version": "aa296ec81e8c",
+      "version": "99e11d959269",
       "scope": "user",
       "marketplace": "claude-plugins-official",
       "gitCommitSha": "aa296ec81e8ccb49c9784f167c2c0aa625a86cec"
     },
     "pr-review-toolkit@claude-plugins-official": {
       "enabled": true,
-      "version": "aa296ec81e8c",
+      "version": "99e11d959269",
       "scope": "user",
       "marketplace": "claude-plugins-official",
       "gitCommitSha": "aa296ec81e8ccb49c9784f167c2c0aa625a86cec"
@@ -78,6 +78,27 @@
       "scope": "user",
       "marketplace": "claude-plugins-official",
       "gitCommitSha": "aa296ec81e8ccb49c9784f167c2c0aa625a86cec"
+    },
+    "frontend-design@claude-plugins-official": {
+      "enabled": true,
+      "version": "99e11d959269",
+      "scope": "user",
+      "marketplace": "claude-plugins-official",
+      "gitCommitSha": "99e11d95926936deb21c3fa29a098511573100d1"
+    },
+    "typescript-lsp@claude-plugins-official": {
+      "enabled": true,
+      "version": "1.0.0",
+      "scope": "user",
+      "marketplace": "claude-plugins-official",
+      "gitCommitSha": "99e11d95926936deb21c3fa29a098511573100d1"
+    },
+    "superpowers-chrome@superpowers-marketplace": {
+      "enabled": true,
+      "version": "1.6.1",
+      "scope": "user",
+      "marketplace": "superpowers-marketplace",
+      "gitCommitSha": "ac8d84dd645737007d65fa627a78526e6992f7d6"
     }
   },
   "marketplaces": {
