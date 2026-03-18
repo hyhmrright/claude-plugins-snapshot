@@ -1,97 +1,13 @@
 {
-  "version": "1.9",
-  "timestamp": "2026-03-06T01:49:54.830518+00:00Z",
+  "version": "1.10",
+  "timestamp": "2026-03-18T11:20:53.058279+00:00Z",
   "plugins": {
-    "document-skills@anthropic-agent-skills": {
-      "enabled": true,
-      "version": "7029232b9212",
-      "scope": "user",
-      "marketplace": "anthropic-agent-skills",
-      "gitCommitSha": "3d59511518591fa82e6cfcf0438d68dd5dad3e76"
-    },
-    "pyright-lsp@claude-plugins-official": {
-      "enabled": true,
-      "version": "1.0.0",
-      "scope": "user",
-      "marketplace": "claude-plugins-official",
-      "gitCommitSha": "55b58ec6e5649104f926ba7558b567dc8d33c5ff"
-    },
-    "code-review@claude-plugins-official": {
-      "enabled": true,
-      "version": "205b6e0b3036",
-      "scope": "user",
-      "marketplace": "claude-plugins-official",
-      "gitCommitSha": "55b58ec6e5649104f926ba7558b567dc8d33c5ff"
-    },
-    "feature-dev@claude-plugins-official": {
-      "enabled": true,
-      "version": "205b6e0b3036",
-      "scope": "user",
-      "marketplace": "claude-plugins-official",
-      "gitCommitSha": "55b58ec6e5649104f926ba7558b567dc8d33c5ff"
-    },
-    "code-simplifier@claude-plugins-official": {
-      "enabled": true,
-      "version": "1.0.0",
-      "scope": "user",
-      "marketplace": "claude-plugins-official",
-      "gitCommitSha": "55b58ec6e5649104f926ba7558b567dc8d33c5ff"
-    },
-    "commit-commands@claude-plugins-official": {
-      "enabled": true,
-      "version": "205b6e0b3036",
-      "scope": "user",
-      "marketplace": "claude-plugins-official",
-      "gitCommitSha": "55b58ec6e5649104f926ba7558b567dc8d33c5ff"
-    },
-    "github@claude-plugins-official": {
-      "enabled": true,
-      "version": "205b6e0b3036",
-      "scope": "user",
-      "marketplace": "claude-plugins-official",
-      "gitCommitSha": "55b58ec6e5649104f926ba7558b567dc8d33c5ff"
-    },
-    "pr-review-toolkit@claude-plugins-official": {
-      "enabled": true,
-      "version": "205b6e0b3036",
-      "scope": "user",
-      "marketplace": "claude-plugins-official",
-      "gitCommitSha": "55b58ec6e5649104f926ba7558b567dc8d33c5ff"
-    },
     "superpowers@superpowers-marketplace": {
       "enabled": true,
-      "version": "4.3.1",
+      "version": "5.0.5",
       "scope": "user",
       "marketplace": "superpowers-marketplace",
-      "gitCommitSha": "e4a2375cb705ca5800f0833528ce36a3faf9017a"
-    },
-    "claude-md-management@claude-plugins-official": {
-      "enabled": true,
-      "version": "1.0.0",
-      "scope": "user",
-      "marketplace": "claude-plugins-official",
-      "gitCommitSha": "55b58ec6e5649104f926ba7558b567dc8d33c5ff"
-    },
-    "claude-code-setup@claude-plugins-official": {
-      "enabled": true,
-      "version": "1.0.0",
-      "scope": "user",
-      "marketplace": "claude-plugins-official",
-      "gitCommitSha": "55b58ec6e5649104f926ba7558b567dc8d33c5ff"
-    },
-    "frontend-design@claude-plugins-official": {
-      "enabled": true,
-      "version": "205b6e0b3036",
-      "scope": "user",
-      "marketplace": "claude-plugins-official",
-      "gitCommitSha": "55b58ec6e5649104f926ba7558b567dc8d33c5ff"
-    },
-    "typescript-lsp@claude-plugins-official": {
-      "enabled": true,
-      "version": "1.0.0",
-      "scope": "user",
-      "marketplace": "claude-plugins-official",
-      "gitCommitSha": "55b58ec6e5649104f926ba7558b567dc8d33c5ff"
+      "gitCommitSha": "7e516434f2a30114300efc9247db32fb37daa5f9"
     },
     "superpowers-chrome@superpowers-marketplace": {
       "enabled": true,
@@ -99,27 +15,6 @@
       "scope": "user",
       "marketplace": "superpowers-marketplace",
       "gitCommitSha": "70b2c6cb56f18c6b28df0ef5cd71a44e31b0543b"
-    },
-    "claude-mem@thedotmack": {
-      "enabled": true,
-      "version": "10.5.2",
-      "scope": "user",
-      "marketplace": "thedotmack",
-      "gitCommitSha": "ecb09df42002db222a57e117abcec188393ef984"
-    },
-    "example-skills@anthropic-agent-skills": {
-      "enabled": true,
-      "version": "7029232b9212",
-      "scope": "user",
-      "marketplace": "anthropic-agent-skills",
-      "gitCommitSha": "3d59511518591fa82e6cfcf0438d68dd5dad3e76"
-    },
-    "security-guidance@claude-plugins-official": {
-      "enabled": true,
-      "version": "205b6e0b3036",
-      "scope": "user",
-      "marketplace": "claude-plugins-official",
-      "gitCommitSha": "55b58ec6e5649104f926ba7558b567dc8d33c5ff"
     }
   },
   "marketplaces": {
