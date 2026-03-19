@@ -1,6 +1,6 @@
 {
-  "version": "1.10",
-  "timestamp": "2026-03-18T11:20:53.058279+00:00Z",
+  "version": "1.11",
+  "timestamp": "2026-03-19T10:52:50.101670+00:00Z",
   "plugins": {
     "superpowers@superpowers-marketplace": {
       "enabled": true,
